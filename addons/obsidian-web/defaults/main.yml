@@ -1,0 +1,42 @@
+---
+# Obsidian Web Addon Default Variables
+
+# Basic configuration
+obsidian_vault_path: /srv/obsidian/vault
+obsidian_site_path: /srv/obsidian/site
+obsidian_domain: ""
+obsidian_url_prefix: /wiki
+obsidian_syncthing_user: root
+obsidian_render_mode: client  # client or server
+
+# Syncthing configuration
+obsidian_syncthing_port: 8384
+obsidian_syncthing_gui_port: 8384
+obsidian_syncthing_data_path: /var/lib/syncthing
+
+# Caddy configuration
+obsidian_caddy_config_path: /etc/caddy/conf.d/obsidian.caddy
+obsidian_site_title: "Obsidian Vault"
+obsidian_site_description: "Personal knowledge base"
+
+# Security settings
+obsidian_enable_auth: false
+obsidian_auth_user: ""
+obsidian_auth_password: ""
+
+# Rendering settings
+obsidian_enable_search: true
+obsidian_enable_editing: false
+obsidian_theme: default
+obsidian_engine: "quartz"  # quartz or client
+obsidian_quartz_version: "v4.3.1"
+obsidian_build_mode: "production"
+
+# File filtering
+obsidian_exclude_patterns:
+  - ".obsidian/*"
+  - ".git/*"
+  - "*.tmp"
+  - "*.bak"
+  - ".DS_Store"
+  - "Thumbs.db"

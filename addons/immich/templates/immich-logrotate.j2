@@ -1,0 +1,32 @@
+{{ immich_data_path }}/logs/*.log {
+    daily
+    missingok
+    rotate 7
+    compress
+    delaycompress
+    notifempty
+    create 0644 root root
+    postrotate
+        cd {{ immich_data_path }} && docker compose restart immich-server immich-machine-learning || true
+    endscript
+}
+
+{{ immich_backup_path }}/backup.log {
+    weekly
+    missingok
+    rotate 4
+    compress
+    delaycompress
+    notifempty
+    create 0644 root root
+}
+
+{{ immich_backup_path }}/restore.log {
+    weekly
+    missingok
+    rotate 4
+    compress
+    delaycompress
+    notifempty
+    create 0644 root root
+}

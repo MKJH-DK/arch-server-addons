@@ -1,0 +1,116 @@
+{# Obsidian Web Caddy Configuration #}
+{%- if obsidian_domain | length > 0 -%}
+{# Domain-based configuration #}
+{{ obsidian_domain }} {
+    root * {{ obsidian_site_path }}
+    encode gzip zstd
+    
+    # Security headers
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy strict-origin-when-cross-origin
+        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: https:; font-src 'self' https://cdn.jsdelivr.net;"
+    }
+    
+    # Handle markdown files
+    @markdown {
+        path *.md
+    }
+    handle @markdown {
+        # For client-side rendering, serve as text with HTML wrapper
+        header Content-Type text/markdown
+        file_server
+    }
+    
+    # Handle directories
+    @directories {
+        path */
+    }
+    handle @directories {
+        try_files {path} {path}/index.html index.html
+    }
+    
+    # Serve static files
+    file_server
+    
+    # Logging
+    log {
+        output file /var/log/caddy/obsidian.log {
+            roll_size 100mb
+            roll_keep 5
+            roll_keep_for 720h
+        }
+        format json
+    }
+    
+    # Health check
+    handle /health {
+        respond "OK" 200
+    }
+}
+{%- else -%}
+{# Path-based configuration #}
+{{ obsidian_url_prefix }} {
+    root * {{ obsidian_site_path }}
+    encode gzip zstd
+    
+    # Security headers
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy strict-origin-when-cross-origin
+        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: https:; font-src 'self' https://cdn.jsdelivr.net;"
+    }
+    
+    # Handle markdown files
+    @markdown {
+        path *.md
+    }
+    handle @markdown {
+        # For client-side rendering, serve as text with HTML wrapper
+        header Content-Type text/markdown
+        file_server
+    }
+    
+    # Handle directories
+    @directories {
+        path */
+    }
+    handle @directories {
+        try_files {path} {path}/index.html index.html
+    }
+    
+    # Serve static files
+    file_server
+    
+    # Strip prefix for internal file serving
+    route {
+        strip_prefix {{ obsidian_url_prefix }}
+    }
+    
+    # Logging
+    log {
+        output file /var/log/caddy/obsidian.log {
+            roll_size 100mb
+            roll_keep 5
+            roll_keep_for 720h
+        }
+        format json
+    }
+    
+    # Health check
+    handle {{ obsidian_url_prefix }}/health {
+        respond "OK" 200
+    }
+}
+{%- endif -%}
+
+{# Reverse proxy for Syncthing admin (optional, can be enabled) #}
+{%- if obsidian_enable_syncthing_proxy | default(false) -%}
+{{ obsidian_url_prefix }}/sync {
+    reverse_proxy 127.0.0.1:{{ obsidian_syncthing_port }}
+}
+{%- endif -%}

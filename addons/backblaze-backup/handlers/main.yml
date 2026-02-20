@@ -1,0 +1,17 @@
+---
+# Backblaze B2 Backup Addon - Handlers
+
+- name: restart backup service
+  ansible.builtin.systemd:
+    name: "{{ backup_service_name }}"
+    state: restarted
+
+- name: reload backup timer
+  ansible.builtin.systemd:
+    name: "{{ backup_timer_name }}"
+    daemon_reload: true
+
+- name: restart backup timer
+  ansible.builtin.systemd:
+    name: "{{ backup_timer_name }}"
+    state: restarted

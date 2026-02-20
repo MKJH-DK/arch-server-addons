@@ -1,0 +1,20 @@
+[Unit]
+Description=Schedule Server Backup to Backblaze B2
+Documentation=man:systemd.timer(5)
+Requires=server-backup.service
+
+[Timer]
+{%- if backup_schedule == "daily" %}
+OnCalendar={{ backup_daily_schedule }}
+{%- elif backup_schedule == "weekly" %}
+OnCalendar={{ backup_weekly_schedule }}
+{%- elif backup_schedule == "monthly" %}
+OnCalendar={{ backup_monthly_schedule }}
+{%- else %}
+OnCalendar={{ backup_schedule }}
+{%- endif %}
+Persistent=true
+RandomizedDelaySec=1800
+
+[Install]
+WantedBy=timers.target

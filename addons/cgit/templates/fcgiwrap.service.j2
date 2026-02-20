@@ -1,0 +1,35 @@
+[Unit]
+Description=fcgiwrap FastCGI server
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/fcgiwrap -f -s unix://{{ cgit_fcgi_socket }}
+StandardInput=socket
+StandardOutput=inherit
+StandardError=journal
+
+# Security settings
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths={{ cgit_repo_path }} {{ cgit_cache_path }} {{ cgit_log_path }} /run/cgit
+ProtectHome=yes
+RemoveIPC=yes
+
+# User
+User={{ cgit_fcgi_user }}
+Group={{ cgit_fcgi_group }}
+
+# Resource limits
+MemoryMax=256M
+CPUQuota=50%
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=fcgiwrap
+
+[Install]
+Also=fcgiwrap.socket
+WantedBy=multi-user.target

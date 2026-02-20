@@ -1,0 +1,33 @@
+[Unit]
+Description=Obsidian Markdown Rendering Service
+Documentation=man:obsidian-render(8)
+After=network.target syncthing.service
+Wants=syncthing.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/obsidian-render watch
+Restart=always
+RestartSec=10
+User=root
+Group=root
+
+# Security settings
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths={{ obsidian_vault_path }} {{ obsidian_site_path }} /var/log
+ProtectHome=yes
+RemoveIPC=yes
+
+# Resource limits
+MemoryMax=256M
+CPUQuota=50%
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=obsidian-render
+
+[Install]
+WantedBy=multi-user.target

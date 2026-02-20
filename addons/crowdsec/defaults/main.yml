@@ -1,0 +1,84 @@
+---
+# CrowdSec Addon Default Variables
+
+# Basic configuration
+crowdsec_enabled: "{{ crowdsec_enabled | default(false) }}"
+crowdsec_data_path: "{{ crowdsec_data_path | default('/srv/crowdsec') }}"
+crowdsec_config_path: "{{ crowdsec_config_path | default('/etc/crowdsec') }}"
+crowdsec_log_path: "{{ crowdsec_log_path | default('/var/log/crowdsec') }}"
+
+# CrowdSec Agent configuration
+crowdsec_agent_port: 8080
+crowdsec_agent_api_port: 8081
+crowdsec_agent_profiling: false
+crowdsec_agent_log_level: "info"
+crowdsec_agent_log_file: "{{ crowdsec_log_path }}/agent.log"
+
+# CrowdSec Bouncer configuration
+crowdsec_bouncer_mode: "stream"  # stream, live
+crowdsec_bouncer_api_key: "{{ vault_crowdsec_api_key | default('') }}"
+crowdsec_bouncer_decision_timeout: "4s"
+crowdsec_bouncer_clean_ip_cache_duration: "5m"
+crowdsec_bouncer_clean_scenario_cache_duration: "5m"
+
+# Caddy integration
+crowdsec_caddy_enabled: true
+crowdsec_caddy_config_path: "/etc/caddy/conf.d/crowdsec.caddy"
+crowdsec_caddy_block_duration: "4h"
+crowdsec_caddy_ban_threshold: 3
+
+# Firewall integration
+crowdsec_firewall_enabled: true
+crowdsec_firewall_type: "nftables"  # nftables, iptables
+crowdsec_firewall_config_path: "/etc/crowdsec/configs/firewall.yaml"
+
+# Metrics and monitoring
+crowdsec_metrics_enabled: true
+crowdsec_metrics_port: 6060
+crowdsec_metrics_endpoint: "/metrics"
+
+# Blocklist configuration
+crowdsec_blocklist_enabled: true
+crowdsec_blocklist_sources:
+  - "crowdsecurity/firewalls"
+  - "abusech/feed"
+  - "blocklistde/firewalls"
+
+# Scenarios configuration
+crowdsec_scenarios_enabled: true
+crowdsec_custom_scenarios_path: "{{ crowdsec_config_path }}/scenarios"
+
+# Machine Learning
+crowdsec_ml_enabled: true
+crowdsec_ml_model_path: "{{ crowdsec_data_path }}/models"
+
+# Backup and retention
+crowdsec_backup_enabled: true
+crowdsec_backup_path: "{{ crowdsec_data_path }}/backups"
+crowdsec_retention_days: 30
+crowdsec_backup_schedule: "0 3 * * *"
+
+# Performance tuning
+crowdsec_max_memory: "512M"
+crowdsec_max_cpu: "50%"
+crowdsec_worker_count: 4
+
+# Security settings
+crowdsec_enroll_key: "{{ vault_crowdsec_enroll_key | default('') }}"
+crowdsec_blocklist_only_mode: false
+crowdsec_stream_mode: true
+
+# Notification settings
+crowdsec_notifications_enabled: true
+crowdsec_notification_webhook: "{{ vault_crowdsec_webhook_url | default('') }}"
+crowdsec_notification_email: "{{ crowdsec_notification_email | default('') }}"
+
+# Integration settings
+crowdsec_caddy_integration: true
+crowdsec_nginx_integration: false
+crowdsec_apache_integration: false
+
+# Advanced settings
+crowdsec_debug_mode: false
+crowdsec_tz: "UTC"
+crowdsec_pid_file: "/run/crowdsec/crowdsec.pid"

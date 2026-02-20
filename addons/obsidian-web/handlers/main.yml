@@ -1,0 +1,19 @@
+---
+# Obsidian Web Addon - Handlers
+
+- name: reload caddy
+  ansible.builtin.systemd:
+    name: caddy
+    state: reloaded
+
+- name: restart syncthing
+  ansible.builtin.systemd:
+    name: syncthing
+    state: restarted
+    scope: user
+  become_user: "{{ obsidian_syncthing_user }}"
+
+- name: restart obsidian-render
+  ansible.builtin.systemd:
+    name: obsidian-render
+    state: restarted

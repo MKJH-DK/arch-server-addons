@@ -1,0 +1,218 @@
+---
+# Immich Addon - Main Tasks
+
+- name: Check if Docker is installed
+  ansible.builtin.command:
+    cmd: docker --version
+  register: docker_check
+  changed_when: false
+  failed_when: false
+
+- name: Fail if Docker is not installed
+  ansible.builtin.fail:
+    msg: "Docker is required for Immich addon. Install Docker first."
+  when: docker_check.rc != 0
+
+- name: Check if Docker Compose is available
+  ansible.builtin.command:
+    cmd: docker compose version
+  register: docker_compose_check
+  changed_when: false
+  failed_when: false
+
+- name: Fail if Docker Compose is not available
+  ansible.builtin.fail:
+    msg: "Docker Compose is required for Immich addon. Install Docker Compose first."
+  when: docker_compose_check.rc != 0
+
+- name: Create Immich directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+  loop:
+    - "{{ immich_data_path }}"
+    - "{{ immich_db_data_path }}"
+    - "{{ immich_redis_data_path }}"
+    - "{{ immich_upload_path }}"
+    - "{{ immich_library_path }}"
+    - "{{ immich_thumb_path }}"
+    - "{{ immich_profile_path }}"
+    - "{{ immich_backup_path }}"
+
+- name: Create Docker network for Immich
+  community.docker.docker_network:
+    name: "{{ immich_network_name }}"
+    state: present
+  register: docker_network
+
+- name: Generate random passwords if not provided
+  ansible.builtin.set_fact:
+    immich_db_password: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters,digits') }}"
+  when: vault_immich_db_password is not defined
+
+- name: Generate random admin password if not provided
+  ansible.builtin.set_fact:
+    immich_admin_password: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters,digits') }}"
+  when: vault_immich_admin_password is not defined
+
+- name: Deploy Docker environment file
+  ansible.builtin.template:
+    src: docker.env.j2
+    dest: "{{ immich_docker_env_path }}"
+    mode: '0600'
+    owner: root
+    group: root
+  notify: restart immich
+
+- name: Deploy Docker Compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ immich_docker_compose_path }}"
+    mode: '0644'
+    owner: root
+    group: root
+  notify: restart immich
+
+- name: Deploy Caddy configuration for Immich
+  ansible.builtin.template:
+    src: immich.caddy.j2
+    dest: "{{ immich_caddy_config }}"
+    mode: '0644'
+    owner: root
+    group: root
+  notify: reload caddy
+
+- name: Pull Docker images
+  community.docker.docker_image:
+    name: "{{ item }}"
+    source: pull
+  loop:
+    - "ghcr.io/immich-app/immich-server:{{ immich_version }}"
+    - "ghcr.io/immich-app/immich-machine-learning:{{ immich_version }}"
+    - "redis:7-alpine"
+    - "tensorchord/pgvecto-rs:pg14-v0.2.0"
+  when: immich_version != "latest"
+
+- name: Start Immich services with Docker Compose
+  community.docker.docker_compose_v2:
+    project_src: "{{ immich_data_path }}"
+    state: present
+  register: immich_compose
+
+- name: Wait for Immich server to be ready
+  ansible.builtin.uri:
+    url: "http://localhost:{{ immich_server_port }}/api/server-info/ping"
+    method: GET
+    timeout: 60
+  register: immich_health
+  retries: 10
+  delay: 10
+  until: immich_health.status == 200
+
+- name: Create Immich admin user script
+  ansible.builtin.template:
+    src: create-admin.sh.j2
+    dest: /usr/local/bin/immich-create-admin
+    mode: '0755'
+    owner: root
+    group: root
+
+- name: Create Immich backup script
+  ansible.builtin.template:
+    src: immich-backup.sh.j2
+    dest: /usr/local/bin/immich-backup
+    mode: '0755'
+    owner: root
+    group: root
+
+- name: Create Immich restore script
+  ansible.builtin.template:
+    src: immich-restore.sh.j2
+    dest: /usr/local/bin/immich-restore
+    mode: '0755'
+    owner: root
+    group: root
+
+- name: Create systemd service for Immich backup
+  ansible.builtin.template:
+    src: immich-backup.service.j2
+    dest: /etc/systemd/system/immich-backup.service
+    mode: '0644'
+    owner: root
+    group: root
+
+- name: Create systemd timer for Immich backup
+  ansible.builtin.template:
+    src: immich-backup.timer.j2
+    dest: /etc/systemd/system/immich-backup.timer
+    mode: '0644'
+    owner: root
+    group: root
+
+- name: Enable and start Immich backup timer
+  ansible.builtin.systemd:
+    name: immich-backup.timer
+    state: started
+    enabled: true
+  when: immich_backup_enabled | bool
+
+- name: Create Immich health check script
+  ansible.builtin.template:
+    src: immich-health.sh.j2
+    dest: /usr/local/bin/immich-health
+    mode: '0755'
+    owner: root
+    group: root
+
+- name: Create logrotate configuration for Immich
+  ansible.builtin.template:
+    src: immich-logrotate.j2
+    dest: /etc/logrotate.d/immich
+    mode: '0644'
+    owner: root
+    group: root
+
+- name: Store generated passwords in secure file
+  ansible.builtin.copy:
+    content: |
+      # Immich Generated Passwords
+      # Generated on: {{ ansible_date_time.iso8601 }}
+      
+      IMMICH_DB_PASSWORD={{ immich_db_password }}
+      IMMICH_ADMIN_PASSWORD={{ immich_admin_password }}
+    dest: "{{ immich_data_path }}/.credentials"
+    mode: '0600'
+    owner: root
+    group: root
+  when: vault_immich_db_password is not defined or vault_immich_admin_password is not defined
+
+- name: Display Immich setup information
+  ansible.builtin.debug:
+    msg:
+      - "Immich addon deployed successfully"
+      - "Data path: {{ immich_data_path }}"
+      - "Web URL: http://localhost{{ immich_url_prefix }}/"
+      - "{%- if immich_domain | length > 0 %}Domain URL: https://{{ immich_domain }}/{%- endif %}"
+      - ""
+      - "Admin credentials:"
+      - "  Email: {{ immich_admin_email }}"
+      - "  Password: {{ immich_admin_password if vault_immich_admin_password is not defined else '[stored in vault]' }}"
+      - ""
+      - "Database:"
+      - "  Password: {{ immich_db_password if vault_immich_db_password is not defined else '[stored in vault]' }}"
+      - ""
+      - "Commands:"
+      - "  Create admin: immich-create-admin"
+      - "  Backup: immich-backup"
+      - "  Restore: immich-restore"
+      - "  Health check: immich-health"
+      - ""
+      - "Docker management:"
+      - "  View logs: cd {{ immich_data_path }} && docker compose logs -f"
+      - "  Stop services: cd {{ immich_data_path }} && docker compose down"
+      - "  Start services: cd {{ immich_data_path }} && docker compose up -d"
+      - ""
+      - "Credentials stored in: {{ immich_data_path }}/.credentials"

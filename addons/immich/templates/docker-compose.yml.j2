@@ -1,0 +1,158 @@
+version: '3.8'
+
+services:
+  immich-server:
+    image: ghcr.io/immich-app/immich-server:{{ immich_version }}
+    container_name: immich-server
+    restart: unless-stopped
+    command: ['start.sh', 'immich']
+    environment:
+      - NODE_ENV={{ immich_environment }}
+    env_file:
+      - {{ immich_docker_env_path }}
+    ports:
+      - "{{ immich_server_port }}:3001"
+    volumes:
+      - {{ immich_upload_path }}:/usr/src/app/upload
+      - {{ immich_library_path }}:/usr/src/app/library
+      - {{ immich_thumb_path }}:/usr/src/app/thumbs
+      - {{ immich_profile_path }}:/usr/src/app/profile
+      - /etc/localtime:/etc/localtime:ro
+    depends_on:
+      - immich-redis
+      - immich-database
+    networks:
+      - {{ immich_network_name }}
+    deploy:
+      resources:
+        limits:
+          memory: {{ immich_memory_limit }}
+        reservations:
+          memory: 1G
+
+  immich-machine-learning:
+    image: ghcr.io/immich-app/immich-machine-learning:{{ immich_version }}
+    container_name: immich-machine-learning
+    restart: unless-stopped
+    command: ['start.sh', 'immich-machine-learning']
+    environment:
+      - NODE_ENV={{ immich_environment }}
+    env_file:
+      - {{ immich_docker_env_path }}
+    ports:
+      - "{{ immich_machine_learning_port }}:3003"
+    volumes:
+      - {{ immich_upload_path }}:/usr/src/app/upload
+      - {{ immich_library_path }}:/usr/src/app/library
+      - {{ immich_thumb_path }}:/usr/src/app/thumbs
+      - {{ immich_profile_path }}:/usr/src/app/profile
+      - /etc/localtime:/etc/localtime:ro
+    depends_on:
+      - immich-redis
+      - immich-database
+    networks:
+      - {{ immich_network_name }}
+    deploy:
+      resources:
+        limits:
+          memory: {{ immich_ml_memory_limit }}
+        reservations:
+          memory: 512M
+
+  immich-redis:
+    image: redis:7-alpine
+    container_name: immich-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "{{ immich_redis_port }}:6379"
+    volumes:
+      - {{ immich_redis_data_path }}:/data
+      - /etc/localtime:/etc/localtime:ro
+    networks:
+      - {{ immich_network_name }}
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 128M
+
+  immich-database:
+    image: tensorchord/pgvecto-rs:pg14-v0.2.0
+    container_name: immich-database
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: {{ immich_db_user }}
+      POSTGRES_PASSWORD: {{ immich_db_password }}
+      POSTGRES_DB: {{ immich_db_name }}
+      POSTGRES_INITDB_ARGS: '--data-checksums'
+    ports:
+      - "{{ immich_db_port }}:5432"
+    volumes:
+      - {{ immich_db_data_path }}:/var/lib/postgresql/data
+      - /etc/localtime:/etc/localtime:ro
+    networks:
+      - {{ immich_network_name }}
+    deploy:
+      resources:
+        limits:
+          memory: {{ immich_db_memory_limit }}
+        reservations:
+          memory: 512M
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -d {{ immich_db_name }} -U {{ immich_db_user }}']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+networks:
+  {{ immich_network_name }}:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  immich_upload:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: {{ immich_upload_path }}
+  
+  immich_library:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: {{ immich_library_path }}
+  
+  immich_thumbs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: {{ immich_thumb_path }}
+  
+  immich_profile:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: {{ immich_profile_path }}
+  
+  immich_db_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: {{ immich_db_data_path }}
+  
+  immich_redis_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: {{ immich_redis_data_path }}

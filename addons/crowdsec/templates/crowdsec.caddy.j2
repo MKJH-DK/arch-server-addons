@@ -1,0 +1,173 @@
+{# CrowdSec Caddy Configuration #}
+{%- if crowdsec_domain | length > 0 -%}
+{# Domain-based configuration #}
+{{ crowdsec_domain }} {
+    # Forward to CrowdSec bouncer first
+    @crowdsec_banned {
+        header X-Crowdsec-Banned true
+    }
+    
+    handle @crowdsec_banned {
+        respond "Access denied by CrowdSec" 403
+    }
+    
+    # Continue with normal processing
+    reverse_proxy localhost:{{ crowdsec_backend_port | default('80') }} {
+        # Add CrowdSec headers
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+        
+        # WebSocket support
+        header_up Connection {>Connection}
+        header_up Upgrade {>Upgrade}
+    }
+    
+    # Security headers
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy strict-origin-when-cross-origin
+        X-Crowdsec-Protected "true"
+    }
+    
+    # Logging
+    log {
+        output file /var/log/caddy/crowdsec-access.log {
+            roll_size 100mb
+            roll_keep 5
+            roll_keep_for 720h
+        }
+        format json
+    }
+    
+    # Health check
+    handle /health {
+        respond "OK" 200
+    }
+}
+{%- else -%}
+{# Path-based configuration #}
+{{ crowdsec_url_prefix }} {
+    # Forward to CrowdSec bouncer first
+    @crowdsec_banned {
+        header X-Crowdsec-Banned true
+    }
+    
+    handle @crowdsec_banned {
+        respond "Access denied by CrowdSec" 403
+    }
+    
+    # Continue with normal processing
+    reverse_proxy localhost:{{ crowdsec_backend_port | default('80') }} {
+        # Add CrowdSec headers
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+        
+        # WebSocket support
+        header_up Connection {>Connection}
+        header_up Upgrade {>Upgrade}
+    }
+    
+    # Security headers
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy strict-origin-when-cross-origin
+        X-Crowdsec-Protected "true"
+    }
+    
+    # Strip prefix for internal routing
+    route {
+        strip_prefix {{ crowdsec_url_prefix }}
+    }
+    
+    # Logging
+    log {
+        output file /var/log/caddy/crowdsec-access.log {
+            roll_size 100mb
+            roll_keep 5
+            roll_keep_for 720h
+        }
+        format json
+    }
+    
+    # Health check
+    handle {{ crowdsec_url_prefix }}/health {
+        respond "OK" 200
+    }
+}
+{%- endif -%}
+
+# Global CrowdSec protection for all sites
+{
+    # Rate limiting
+    rate_limit {
+        zone static_files
+        key {remote_host}
+        events 100
+        window 1m
+    }
+    
+    # IP blocklist (from CrowdSec)
+    @blocked_ips {
+        remote_ip 192.168.1.100
+        # This will be dynamically updated by CrowdSec
+    }
+    
+    handle @blocked_ips {
+        respond "Access blocked by CrowdSec" 403
+    }
+    
+    # Common attack patterns
+    @bad_user_agents {
+        header User-Agent *bot*
+        header User-Agent *crawler*
+        header User-Agent *scanner*
+    }
+    
+    handle @bad_user_agents {
+        respond "Access denied" 403
+    }
+    
+    # SQL Injection protection
+    @sql_injection {
+        query *SELECT*
+        query *UNION*
+        query *INSERT*
+        query *DELETE*
+        query *DROP*
+        query *EXEC*
+    }
+    
+    handle @sql_injection {
+        respond "Access denied" 403
+    }
+    
+    # XSS protection
+    @xss {
+        query *<script*
+        query *javascript:*
+        query *onload=*
+        query *onerror=*
+    }
+    
+    handle @xss {
+        respond "Access denied" 403
+    }
+    
+    # Path traversal protection
+    @path_traversal {
+        path */../*
+        path */etc/*
+        path */proc/*
+        path */sys/*
+    }
+    
+    handle @path_traversal {
+        respond "Access denied" 403
+    }
+}

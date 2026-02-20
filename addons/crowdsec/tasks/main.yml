@@ -1,0 +1,237 @@
+---
+# CrowdSec Addon - Main Tasks
+
+- name: Install required packages
+  ansible.builtin.pacman:
+    name:
+      - crowdsec
+      - crowdsec-firewall-bouncer
+      - jq
+      - curl
+      - wget
+    state: present
+  when: ansible_distribution == "Archlinux"
+
+- name: Create CrowdSec directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+  loop:
+    - "{{ crowdsec_data_path }}"
+    - "{{ crowdsec_config_path }}"
+    - "{{ crowdsec_log_path }}"
+    - "{{ crowdsec_config_path }}/configs"
+    - "{{ crowdsec_config_path }}/scenarios"
+    - "{{ crowdsec_backup_path }}"
+    - "/run/crowdsec"
+
+- name: Create CrowdSec configuration directory
+  ansible.builtin.file:
+    path: "{{ crowdsec_config_path }}/config"
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+
+- name: Deploy CrowdSec agent configuration
+  ansible.builtin.template:
+    src: crowdsec-agent.yaml.j2
+    dest: "{{ crowdsec_config_path }}/config/agent.yaml"
+    mode: '0644'
+    owner: root
+    group: root
+  notify: restart crowdsec
+
+- name: Deploy CrowdSec firewall configuration
+  ansible.builtin.template:
+    src: crowdsec-firewall.yaml.j2
+    dest: "{{ crowdsec_firewall_config_path }}"
+    mode: '0644'
+    owner: root
+    group: root
+  notify: restart crowdsec-firewall
+
+- name: Deploy CrowdSec scenarios configuration
+  ansible.builtin.template:
+    src: crowdsec-scenarios.yaml.j2
+    dest: "{{ crowdsec_config_path }}/scenarios/custom.yaml"
+    mode: '0644'
+    owner: root
+    group: root
+  notify: restart crowdsec
+
+- name: Deploy Caddy integration configuration
+  ansible.builtin.template:
+    src: crowdsec.caddy.j2
+    dest: "{{ crowdsec_caddy_config_path }}"
+    mode: '0644'
+    owner: root
+    group: root
+  notify: reload caddy
+  when: crowdsec_caddy_enabled | bool
+
+- name: Generate CrowdSec enrollment key if not provided
+  ansible.builtin.set_fact:
+    crowdsec_enroll_key: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters,digits') }}"
+  when: vault_crowdsec_enroll_key is not defined
+
+- name: Enroll CrowdSec agent
+  ansible.builtin.shell: |
+    cscli enrollment enroll --key "{{ crowdsec_enroll_key }}" --auto
+  args:
+    creates: "{{ crowdsec_config_path }}/config/agent.yaml"
+  register: crowdsec_enrollment
+  failed_when: false
+  when: crowdsec_enroll_key != ""
+
+- name: Enable and start CrowdSec agent
+  ansible.builtin.systemd:
+    name: crowdsec
+    state: started
+    enabled: true
+
+- name: Enable and start CrowdSec firewall bouncer
+  ansible.builtin.systemd:
+    name: crowdsec-firewall
+    state: started
+    enabled: true
+  when: crowdsec_firewall_enabled | bool
+
+- name: Wait for CrowdSec agent to be ready
+  ansible.builtin.uri:
+    url: "http://localhost:{{ crowdsec_agent_port }}/v1/metrics"
+    method: GET
+    timeout: 30
+  register: crowdsec_health
+  retries: 10
+  delay: 3
+  until: crowdsec_health.status == 200
+
+- name: Create CrowdSec management scripts
+  ansible.builtin.template:
+    src: crowdsec-manage.sh.j2
+    dest: /usr/local/bin/crowdsec-manage
+    mode: '0755'
+    owner: root
+    group: root
+
+- name: Create CrowdSec status script
+  ansible.builtin.template:
+    src: crowdsec-status.sh.j2
+    dest: /usr/local/bin/crowdsec-status
+    mode: '0755'
+    owner: root
+    group: root
+
+- name: Create CrowdSec backup script
+  ansible.builtin.template:
+    src: crowdsec-backup.sh.j2
+    dest: /usr/local/bin/crowdsec-backup
+    mode: '0755'
+    owner: root
+    group: root
+
+- name: Create CrowdSec restore script
+  ansible.builtin.template:
+    src: crowdsec-restore.sh.j2
+    dest: /usr/local/bin/crowdsec-restore
+    mode: '0755'
+    owner: root
+    group: root
+
+- name: Create CrowdSec systemd service for backup
+  ansible.builtin.template:
+    src: crowdsec-backup.service.j2
+    dest: /etc/systemd/system/crowdsec-backup.service
+    mode: '0644'
+    owner: root
+    group: root
+
+- name: Create CrowdSec systemd timer for backup
+  ansible.builtin.template:
+    src: crowdsec-backup.timer.j2
+    dest: /etc/systemd/system/crowdsec-backup.timer
+    mode: '0644'
+    owner: root
+    group: root
+
+- name: Enable and start CrowdSec backup timer
+  ansible.builtin.systemd:
+    name: crowdsec-backup.timer
+    state: started
+    enabled: true
+  when: crowdsec_backup_enabled | bool
+
+- name: Create logrotate configuration for CrowdSec
+  ansible.builtin.template:
+    src: crowdsec-logrotate.j2
+    dest: /etc/logrotate.d/crowdsec
+    mode: '0644'
+    owner: root
+    group: root
+
+- name: Store generated enrollment key
+  ansible.builtin.copy:
+    content: |
+      # CrowdSec Generated Enrollment Key
+      # Generated on: {{ ansible_date_time.iso8601 }}
+      
+      CROWDSEC_ENROLL_KEY={{ crowdsec_enroll_key }}
+    dest: "{{ crowdsec_data_path }}/.enrollment_key"
+    mode: '0600'
+    owner: root
+    group: root
+  when: vault_crowdsec_enroll_key is not defined
+
+- name: Configure CrowdSec metrics collection
+  ansible.builtin.lineinfile:
+    path: "{{ crowdsec_config_path }}/config/agent.yaml"
+    regexp: '^metrics:'
+    line: 'metrics: {{ crowdsec_metrics_enabled | lower }}'
+  when: crowdsec_metrics_enabled | bool
+
+- name: Create CrowdSec health check endpoint
+  ansible.builtin.copy:
+    content: |
+      #!/bin/bash
+      # CrowdSec health check
+      
+      if systemctl is-active crowdsec &>/dev/null; then
+          echo "CrowdSec: OK"
+          exit 0
+      else
+          echo "CrowdSec: FAILED"
+          exit 1
+      fi
+    dest: /usr/local/bin/crowdsec-health
+    mode: '0755'
+    owner: root
+    group: root
+
+- name: Display CrowdSec setup information
+  ansible.builtin.debug:
+    msg:
+      - "CrowdSec addon configured successfully"
+      - "Data path: {{ crowdsec_data_path }}"
+      - "Config path: {{ crowdsec_config_path }}"
+      - "Agent port: {{ crowdsec_agent_port }}"
+      - "API port: {{ crowdsec_agent_api_port }}"
+      - "Firewall enabled: {{ crowdsec_firewall_enabled }}"
+      - "Caddy integration: {{ crowdsec_caddy_enabled }}"
+      - ""
+      - "Commands:"
+      - "  Management: crowdsec-manage"
+      - "  Status: crowdsec-status"
+      - "  Backup: crowdsec-backup"
+      - "  Restore: crowdsec-restore"
+      - "  Health: crowdsec-health"
+      - ""
+      - "Web UI:"
+      - "  Agent: http://localhost:{{ crowdsec_agent_port }}/"
+      - "  Metrics: http://localhost:{{ crowdsec_metrics_port }}{{ crowdsec_metrics_endpoint }}"
+      - ""
+      - "Enrollment key: {{ crowdsec_enroll_key if vault_crowdsec_enroll_key is not defined else '[stored in vault]' }}"
+      - "Stored in: {{ crowdsec_data_path }}/.enrollment_key"

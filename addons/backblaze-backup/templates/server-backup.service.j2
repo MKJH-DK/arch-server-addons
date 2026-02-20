@@ -1,0 +1,41 @@
+[Unit]
+Description=Server Backup to Backblaze B2
+Documentation=man:rclone(1)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart={{ backup_script_path }} backup
+ExecReload=/bin/true
+
+# Security settings
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths={{ backup_staging_path }} {{ backup_log_path }} {{ backup_config_path }} /root/.config/rclone
+ProtectHome=yes
+RemoveIPC=yes
+
+# User
+User=root
+Group=root
+
+# Environment
+Environment="RCLONE_CONFIG=/root/.config/rclone/rclone.conf"
+
+# Resource limits
+MemoryMax=1G
+CPUQuota=80%
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=server-backup
+
+# Timeout
+TimeoutStartSec=3600
+TimeoutStopSec=300
+
+[Install]
+WantedBy=multi-user.target

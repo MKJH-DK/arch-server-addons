@@ -1,0 +1,399 @@
+#!/bin/bash
+# CrowdSec Management Script
+
+set -euo pipefail
+
+# Configuration
+SCRIPT_NAME="$(basename "$0")"
+CROWDSEC_DATA_PATH="{{ crowdsec_data_path }}"
+CROWDSEC_CONFIG_PATH="{{ crowdsec_config_path }}"
+CROWDSEC_AGENT_PORT="{{ crowdsec_agent_port }}"
+CROWDSEC_API_PORT="{{ crowdsec_agent_api_port }}"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+# Logging
+log() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+log_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+log_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Check if CrowdSec is installed
+check_crowdsec() {
+    if ! command -v cscli &> /dev/null; then
+        log_error "CrowdSec CLI (cscli) not found"
+        return 1
+    fi
+    
+    if ! systemctl is-active crowdsec &> /dev/null; then
+        log_error "CrowdSec service is not running"
+        return 1
+    fi
+    
+    return 0
+}
+
+# Show CrowdSec status
+show_status() {
+    log "CrowdSec Status"
+    echo "================"
+    
+    # Service status
+    if systemctl is-active crowdsec &> /dev/null; then
+        log_success "CrowdSec Agent: Running"
+    else
+        log_error "CrowdSec Agent: Not running"
+    fi
+    
+    if systemctl is-active crowdsec-firewall &> /dev/null; then
+        log_success "CrowdSec Firewall: Running"
+    else
+        log_warning "CrowdSec Firewall: Not running"
+    fi
+    
+    # API status
+    if curl -s "http://localhost:$CROWDSEC_AGENT_PORT/v1/metrics" &> /dev/null; then
+        log_success "API: Responsive"
+    else
+        log_error "API: Not responding"
+    fi
+    
+    # Configuration status
+    echo ""
+    log "Configuration:"
+    echo "  Data path: $CROWDSEC_DATA_PATH"
+    echo "  Config path: $CROWDSEC_CONFIG_PATH"
+    echo "  Agent port: $CROWDSEC_AGENT_PORT"
+    echo "  API port: $CROWDSEC_API_PORT"
+    
+    # Recent decisions
+    echo ""
+    log "Recent decisions (last 10):"
+    cscli decisions list -l 10 2>/dev/null || log_warning "Could not fetch decisions"
+    
+    # Machine info
+    echo ""
+    log "Machine information:"
+    cscli machines list 2>/dev/null || log_warning "Could not fetch machine info"
+}
+
+# Show CrowdSec metrics
+show_metrics() {
+    log "CrowdSec Metrics"
+    echo "================="
+    
+    # Agent metrics
+    if curl -s "http://localhost:$CROWDSEC_AGENT_PORT/v1/metrics" | grep -q "crowdsec"; then
+        log "Agent metrics:"
+        curl -s "http://localhost:$CROWDSEC_AGENT_PORT/v1/metrics" | grep "^crowdsec" | while read -r line; do
+            echo "  $line"
+        done
+    else
+        log_warning "Agent metrics not available"
+    fi
+    
+    # Firewall metrics
+    if command -v cscli &> /dev/null; then
+        echo ""
+        log "Firewall metrics:"
+        cscli metrics list 2>/dev/null || log_warning "Could not fetch firewall metrics"
+    fi
+}
+
+# Show blocked IPs
+show_blocked() {
+    log "Blocked IPs"
+    echo "============"
+    
+    if command -v cscli &> /dev/null; then
+        cscli decisions list --type ban -l 50 2>/dev/null || log_warning "Could not fetch blocked IPs"
+    else
+        log_error "cscli not available"
+    fi
+}
+
+# Show CrowdSec alerts
+show_alerts() {
+    log "CrowdSec Alerts"
+    echo "==============="
+    
+    if command -v cscli &> /dev/null; then
+        cscli alerts list -l 20 2>/dev/null || log_warning "Could not fetch alerts"
+    else
+        log_error "cscli not available"
+    fi
+}
+
+# Whitelist IP
+whitelist_ip() {
+    local ip="$1"
+    
+    if [[ -z "$ip" ]]; then
+        log_error "IP address required"
+        echo "Usage: $0 whitelist <IP_ADDRESS>"
+        return 1
+    fi
+    
+    log "Whitelisting IP: $ip"
+    
+    if command -v cscli &> /dev/null; then
+        cscli bouncers add --ip "$ip" --type whitelist || {
+            log_error "Failed to whitelist IP"
+            return 1
+        }
+        log_success "IP $ip whitelisted successfully"
+    else
+        log_error "cscli not available"
+        return 1
+    fi
+}
+
+# Blacklist IP
+blacklist_ip() {
+    local ip="$1"
+    
+    if [[ -z "$ip" ]]; then
+        log_error "IP address required"
+        echo "Usage: $0 blacklist <IP_ADDRESS>"
+        return 1
+    fi
+    
+    log "Blacklisting IP: $ip"
+    
+    if command -v cscli &> /dev/null; then
+        cscli bouncers add --ip "$ip" --type blacklist || {
+            log_error "Failed to blacklist IP"
+            return 1
+        }
+        log_success "IP $ip blacklisted successfully"
+    else
+        log_error "cscli not available"
+        return 1
+    fi
+}
+
+# Remove IP from blocklist
+unblock_ip() {
+    local ip="$1"
+    
+    if [[ -z "$ip" ]]; then
+        log_error "IP address required"
+        echo "Usage: $0 unblock <IP_ADDRESS>"
+        return 1
+    fi
+    
+    log "Removing IP from blocklist: $ip"
+    
+    if command -v cscli &> /dev/null; then
+        cscli bouncers delete --ip "$ip" || {
+            log_error "Failed to remove IP from blocklist"
+            return 1
+        }
+        log_success "IP $ip removed from blocklist successfully"
+    else
+        log_error "cscli not available"
+        return 1
+    fi
+}
+
+# Restart CrowdSec services
+restart_services() {
+    log "Restarting CrowdSec services..."
+    
+    if systemctl is-active crowdsec &> /dev/null; then
+        systemctl restart crowdsec
+        log_success "CrowdSec agent restarted"
+    else
+        systemctl start crowdsec
+        log_success "CrowdSec agent started"
+    fi
+    
+    if systemctl is-active crowdsec-firewall &> /dev/null; then
+        systemctl restart crowdsec-firewall
+        log_success "CrowdSec firewall restarted"
+    else
+        systemctl start crowdsec-firewall
+        log_success "CrowdSec firewall started"
+    fi
+    
+    # Wait for services to be ready
+    sleep 5
+    
+    if curl -s "http://localhost:$CROWDSEC_AGENT_PORT/v1/metrics" &> /dev/null; then
+        log_success "CrowdSec services are ready"
+    else
+        log_warning "CrowdSec services may not be ready yet"
+    fi
+}
+
+# Update CrowdSec
+update_crowdsec() {
+    log "Updating CrowdSec..."
+    
+    if command -v pacman &> /dev/null; then
+        pacman -Sy crowdsec crowdsec-firewall-bouncer || {
+            log_error "Failed to update CrowdSec"
+            return 1
+        }
+        log_success "CrowdSec updated successfully"
+        
+        # Restart services after update
+        restart_services
+    else
+        log_error "Package manager not supported"
+        return 1
+    fi
+}
+
+# Show CrowdSec configuration
+show_config() {
+    log "CrowdSec Configuration"
+    echo "===================="
+    
+    if [[ -f "$CROWDSEC_CONFIG_PATH/config/agent.yaml" ]]; then
+        echo "Agent configuration:"
+        cat "$CROWDSEC_CONFIG_PATH/config/agent.yaml"
+    else
+        log_warning "Agent configuration not found"
+    fi
+    
+    if [[ -f "{{ crowdsec_firewall_config_path }}" ]]; then
+        echo ""
+        echo "Firewall configuration:"
+        cat "{{ crowdsec_firewall_config_path }}"
+    else
+        log_warning "Firewall configuration not found"
+    fi
+}
+
+# Test CrowdSec setup
+test_setup() {
+    log "Testing CrowdSec setup..."
+    
+    # Test agent
+    if curl -s "http://localhost:$CROWDSEC_AGENT_PORT/v1/metrics" &> /dev/null; then
+        log_success "Agent API: OK"
+    else
+        log_error "Agent API: FAILED"
+    fi
+    
+    # Test firewall
+    if systemctl is-active crowdsec-firewall &> /dev/null; then
+        log_success "Firewall service: OK"
+    else
+        log_warning "Firewall service: NOT RUNNING"
+    fi
+    
+    # Test CLI
+    if command -v cscli &> /dev/null; then
+        log_success "CLI: OK"
+        
+        # Test basic commands
+        if cscli machines list &> /dev/null; then
+            log_success "CLI communication: OK"
+        else
+            log_error "CLI communication: FAILED"
+        fi
+    else
+        log_error "CLI: NOT FOUND"
+    fi
+}
+
+# Show usage
+show_usage() {
+    echo "Usage: $0 [COMMAND] [OPTIONS]"
+    echo ""
+    echo "Commands:"
+    echo "  status          Show CrowdSec status and metrics"
+    echo "  metrics         Show detailed metrics"
+    echo "  blocked         Show blocked IPs"
+    echo "  alerts          Show recent alerts"
+    echo "  whitelist IP    Whitelist an IP address"
+    echo "  blacklist IP    Blacklist an IP address"
+    echo "  unblock IP      Remove IP from blocklist"
+    echo "  restart         Restart CrowdSec services"
+    echo "  update          Update CrowdSec packages"
+    echo "  config          Show configuration"
+    echo "  test            Test CrowdSec setup"
+    echo "  help            Show this help"
+    echo ""
+    echo "Examples:"
+    echo "  $0 status"
+    echo "  $0 whitelist 192.168.1.100"
+    echo "  $0 blacklist 10.0.0.5"
+    echo "  $0 unblock 10.0.0.5"
+}
+
+# Main execution
+main() {
+    local command="${1:-help}"
+    
+    case "$command" in
+        "status")
+            show_status
+            ;;
+        "metrics")
+            show_metrics
+            ;;
+        "blocked")
+            show_blocked
+            ;;
+        "alerts")
+            show_alerts
+            ;;
+        "whitelist")
+            whitelist_ip "$2"
+            ;;
+        "blacklist")
+            blacklist_ip "$2"
+            ;;
+        "unblock")
+            unblock_ip "$2"
+            ;;
+        "restart")
+            restart_services
+            ;;
+        "update")
+            update_crowdsec
+            ;;
+        "config")
+            show_config
+            ;;
+        "test")
+            test_setup
+            ;;
+        "help"|"-h"|"--help")
+            show_usage
+            ;;
+        *)
+            log_error "Unknown command: $command"
+            show_usage
+            exit 1
+            ;;
+    esac
+}
+
+# Check if running as root
+if [[ $EUID -ne 0 ]]; then
+    log_error "This script must be run as root"
+    exit 1
+fi
+
+# Run main function
+main "$@"

@@ -1,0 +1,217 @@
+#!/bin/bash
+# Scan for git repositories and update cgit configuration
+
+set -euo pipefail
+
+# Configuration
+REPO_PATH="{{ cgit_repo_path }}"
+CGIT_CONFIG="{{ cgit_config_file }}"
+LOG_FILE="{{ cgit_log_path }}/scan.log"
+
+# Logging
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+}
+
+error() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $1" | tee -a "$LOG_FILE" >&2
+    exit 1
+}
+
+# Check if directory is a git repository
+is_git_repo() {
+    local dir="$1"
+    [[ -d "$dir/objects" && -d "$dir/refs" && -f "$dir/HEAD" ]]
+}
+
+# Get repository description
+get_repo_description() {
+    local repo_dir="$1"
+    local desc_file="$repo_dir/description"
+    
+    if [[ -f "$desc_file" ]]; then
+        # Read first line, remove trailing newline
+        head -n1 "$desc_file" | tr -d '\n'
+    else
+        echo "Unnamed repository"
+    fi
+}
+
+# Get repository owner
+get_repo_owner() {
+    local repo_dir="$1"
+    local owner_file="$repo_dir/owner"
+    
+    if [[ -f "$owner_file" ]]; then
+        head -n1 "$owner_file" | tr -d '\n'
+    else
+        echo "{{ cgit_fcgi_user }}"
+    fi
+}
+
+# Get last modification time
+get_repo_mtime() {
+    local repo_dir="$1"
+    find "$repo_dir" -type f -not -path "*/objects/*" -not -path "*/pack/*" -printf '%T@\n' | sort -n | tail -1 | cut -d. -f1
+}
+
+# Scan repositories
+scan_repositories() {
+    log "Scanning repositories in $REPO_PATH"
+    
+    if [[ ! -d "$REPO_PATH" ]]; then
+        error "Repository path does not exist: $REPO_PATH"
+    fi
+    
+    local repo_count=0
+    local temp_config
+    temp_config=$(mktemp)
+    
+    # Copy existing configuration (excluding repo-specific settings)
+    grep -v "^repo.url=" "$CGIT_CONFIG" 2>/dev/null | grep -v "^repo.path=" | grep -v "^repo.desc=" | grep -v "^repo.owner=" | grep -v "^repo.section=" > "$temp_config" || true
+    
+    # Find all git repositories
+    while IFS= read -r -d '' repo_dir; do
+        if is_git_repo "$repo_dir"; then
+            local repo_name
+            repo_name=$(basename "$repo_dir")
+            local repo_path="${repo_dir#$REPO_PATH/}"
+            
+            # Skip if already configured (we'll update it)
+            if grep -q "repo.url=$repo_name$" "$CGIT_CONFIG" 2>/dev/null; then
+                log "Updating existing repository: $repo_name"
+            else
+                log "Adding new repository: $repo_name"
+            fi
+            
+            # Get repository information
+            local description
+            description=$(get_repo_description "$repo_dir")
+            local owner
+            owner=$(get_repo_owner "$repo_dir")
+            local mtime
+            mtime=$(get_repo_mtime "$repo_dir")
+            
+            # Add repository configuration
+            cat >> "$temp_config" << EOF
+
+# Repository: $repo_name
+repo.url=$repo_name
+repo.path=$repo_path
+repo.desc=$description
+repo.owner=$owner
+repo.section=Repositories
+repo.mtime=$mtime
+EOF
+            
+            ((repo_count++))
+        fi
+    done < <(find "$REPO_PATH" -maxdepth 2 -type d -name "*.git" -print0)
+    
+    # Backup original config
+    if [[ -f "$CGIT_CONFIG" ]]; then
+        cp "$CGIT_CONFIG" "$CGIT_CONFIG.backup.$(date +%Y%m%d-%H%M%S)"
+    fi
+    
+    # Install new configuration
+    mv "$temp_config" "$CGIT_CONFIG"
+    chmod 0644 "$CGIT_CONFIG"
+    
+    log "Scan completed: $repo_count repositories configured"
+    
+    # Restart fcgiwrap to reload configuration
+    if systemctl is-active fcgiwrap.socket &>/dev/null; then
+        systemctl restart fcgiwrap.socket
+        log "Restarted fcgiwrap service"
+    fi
+}
+
+# Validate repository configuration
+validate_repos() {
+    log "Validating repository configuration"
+    
+    local errors=0
+    
+    while IFS= read -r repo_url; do
+        if [[ -n "$repo_url" ]]; then
+            local repo_path
+            repo_path=$(grep -A1 "^repo.url=$repo_url$" "$CGIT_CONFIG" | grep "^repo.path=" | cut -d= -f2 || echo "")
+            
+            if [[ -n "$repo_path" ]]; then
+                local full_path="$REPO_PATH/$repo_path"
+                if ! is_git_repo "$full_path"; then
+                    log "ERROR: Repository not found or invalid: $repo_url ($full_path)"
+                    ((errors++))
+                fi
+            else
+                log "ERROR: No path configured for repository: $repo_url"
+                ((errors++))
+            fi
+        fi
+    done < <(grep "^repo.url=" "$CGIT_CONFIG" | cut -d= -f2)
+    
+    if [[ $errors -eq 0 ]]; then
+        log "Repository validation passed"
+    else
+        log "Repository validation failed: $errors errors found"
+    fi
+    
+    return $errors
+}
+
+# Show repository statistics
+show_stats() {
+    log "Repository statistics"
+    
+    local total_repos
+    total_repos=$(grep -c "^repo.url=" "$CGIT_CONFIG" 2>/dev/null || echo "0")
+    
+    echo "Total repositories: $total_repos"
+    
+    if [[ $total_repos -gt 0 ]]; then
+        echo ""
+        echo "Repository list:"
+        grep "^repo.url=" "$CGIT_CONFIG" | while IFS= read -r line; do
+            local repo_name
+            repo_name=$(echo "$line" | cut -d= -f2)
+            local description
+            description=$(grep -A1 "^repo.url=$repo_name$" "$CGIT_CONFIG" | grep "^repo.desc=" | cut -d= -f2 || echo "No description")
+            printf "  %-30s %s\n" "$repo_name" "$description"
+        done
+    fi
+}
+
+# Main execution
+main() {
+    case "${1:-scan}" in
+        "scan")
+            scan_repositories
+            validate_repos
+            ;;
+        "validate")
+            validate_repos
+            ;;
+        "stats")
+            show_stats
+            ;;
+        "help"|"-h"|"--help")
+            echo "Usage: $0 {scan|validate|stats|help}"
+            echo "  scan     - Scan for repositories and update configuration (default)"
+            echo "  validate - Validate existing repository configuration"
+            echo "  stats    - Show repository statistics"
+            echo "  help     - Show this help"
+            exit 0
+            ;;
+        *)
+            error "Unknown command: $1. Use 'help' for usage."
+            ;;
+    esac
+}
+
+# Check if running as root
+if [[ $EUID -ne 0 ]]; then
+    error "This script must be run as root"
+fi
+
+# Run main function
+main "$@"

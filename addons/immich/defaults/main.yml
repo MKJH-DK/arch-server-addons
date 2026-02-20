@@ -1,0 +1,65 @@
+---
+# Immich Addon Default Variables
+
+# Basic configuration
+immich_enabled: "{{ immich_enabled | default(false) }}"
+immich_domain: "{{ immich_domain | default('') }}"
+immich_url_prefix: "{{ immich_url_prefix | default('/photos') }}"
+immich_data_path: "{{ immich_data_path | default('/srv/immich') }}"
+
+# Docker configuration
+immich_docker_compose_path: "{{ immich_data_path }}/docker-compose.yml"
+immich_docker_env_path: "{{ immich_data_path }}/.env"
+immich_network_name: "immich-network"
+immich_version: "latest"
+
+# Service ports (internal only)
+immich_server_port: 2283
+immich_microservices_port: 2284
+immich_machine_learning_port: 3003
+
+# Database configuration
+immich_db_name: "immich"
+immich_db_user: "immich"
+immich_db_password: "{{ vault_immich_db_password | default('changeme') }}"
+immich_db_port: 5432
+immich_db_data_path: "{{ immich_data_path }}/postgres"
+
+# Redis configuration
+immich_redis_port: 6379
+immich_redis_data_path: "{{ immich_data_path }}/redis"
+
+# Storage paths
+immich_upload_path: "{{ immich_data_path }}/uploads"
+immich_library_path: "{{ immich_data_path }}/library"
+immich_thumb_path: "{{ immich_data_path }}/thumbs"
+immich_profile_path: "{{ immich_data_path }}/profile"
+
+# Caddy configuration
+immich_caddy_config: "/etc/caddy/conf.d/immich.caddy"
+
+# Security settings
+immich_enable_auth: true
+immich_enable_registration: false
+immich_admin_email: "{{ immich_admin_email | default('admin@example.com') }}"
+immich_admin_password: "{{ vault_immich_admin_password | default('changeme') }}"
+
+# Performance settings
+immich_workers: 4
+immich_conversion_threads: 2
+immich_thumbnail_size: 200
+immich_preview_size: 1440
+
+# Backup settings
+immich_backup_enabled: true
+immich_backup_path: "{{ immich_data_path }}/backups"
+immich_backup_schedule: "0 2 * * *"
+
+# Resource limits
+immich_memory_limit: "4G"
+immich_db_memory_limit: "2G"
+immich_ml_memory_limit: "2G"
+
+# Environment
+immich_environment: "production"
+immich_log_level: "log"

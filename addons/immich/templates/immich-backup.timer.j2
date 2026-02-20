@@ -1,0 +1,12 @@
+[Unit]
+Description=Schedule Immich Backup
+Documentation=man:systemd.timer(5)
+Requires=immich-backup.service
+
+[Timer]
+OnCalendar={{ immich_backup_schedule }}
+Persistent=true
+RandomizedDelaySec=1800
+
+[Install]
+WantedBy=timers.target

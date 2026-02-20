@@ -1,0 +1,149 @@
+---
+- name: Deploy Arch Server Addons
+  hosts: localhost
+  connection: local
+  become: yes
+  vars:
+    # Obsidian Web variables
+    obsidian_enabled: "{{ obsidian_enabled | default(false) }}"
+    obsidian_vault_path: "{{ obsidian_vault_path | default('/srv/obsidian/vault') }}"
+    obsidian_domain: "{{ obsidian_domain | default('') }}"
+    obsidian_url_prefix: "{{ obsidian_url_prefix | default('/wiki') }}"
+    obsidian_syncthing_user: "{{ obsidian_syncthing_user | default('root') }}"
+    obsidian_render_mode: "{{ obsidian_render_mode | default('client') }}"
+    
+    # Backblaze Backup variables
+    backblaze_enabled: "{{ backblaze_enabled | default(false) }}"
+    backup_b2_bucket: "{{ backup_b2_bucket | default('') }}"
+    backup_schedule: "{{ backup_schedule | default('daily') }}"
+    backup_retention_days: "{{ backup_retention_days | default(30) }}"
+    backup_encrypt: "{{ backup_encrypt | default(true) }}"
+    backup_paths: "{{ backup_paths | default(['/srv', '/etc/caddy']) }}"
+    
+    # cgit variables
+    cgit_enabled: "{{ cgit_enabled | default(false) }}"
+    cgit_title: "{{ cgit_title | default('My Git Repos') }}"
+    cgit_repo_path: "{{ cgit_repo_path | default('/srv/git') }}"
+    cgit_url_prefix: "{{ cgit_url_prefix | default('/git') }}"
+    
+    # Immich variables
+    immich_enabled: "{{ immich_enabled | default(false) }}"
+    immich_domain: "{{ immich_domain | default('') }}"
+    immich_url_prefix: "{{ immich_url_prefix | default('/photos') }}"
+    immich_data_path: "{{ immich_data_path | default('/srv/immich') }}"
+    immich_admin_email: "{{ immich_admin_email | default('admin@example.com') }}"
+    immich_version: "{{ immich_version | default('latest') }}"
+    
+    # CrowdSec variables
+    crowdsec_enabled: "{{ crowdsec_enabled | default(false) }}"
+    crowdsec_domain: "{{ crowdsec_domain | default('') }}"
+    crowdsec_url_prefix: "{{ crowdsec_url_prefix | default('/security') }}"
+    crowdsec_data_path: "{{ crowdsec_data_path | default('/srv/crowdsec') }}"
+    crowdsec_config_path: "{{ crowdsec_config_path | default('/etc/crowdsec') }}"
+    crowdsec_log_path: "{{ crowdsec_log_path | default('/var/log/crowdsec') }}"
+    crowdsec_agent_port: "{{ crowdsec_agent_port | default(8080) }}"
+    crowdsec_api_port: "{{ crowdsec_api_port | default(8081) }}"
+    crowdsec_firewall_enabled: "{{ crowdsec_firewall_enabled | default(true) }}"
+    crowdsec_caddy_enabled: "{{ crowdsec_caddy_enabled | default(true) }}"
+
+  pre_tasks:
+    - name: Verify base server installation
+      ansible.builtin.stat:
+        path: /usr/local/bin/health-check
+      register: health_check
+      failed_when: not health_check.stat.exists
+
+    - name: Verify Caddy installation
+      ansible.builtin.stat:
+        path: /etc/caddy/Caddyfile
+      register: caddy_config
+      failed_when: not caddy_config.stat.exists
+
+    - name: Create addon directories structure
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - /srv/obsidian
+        - /srv/git
+        - /srv/backups
+        - /etc/caddy/conf.d
+
+  roles:
+    - role: ../../addons/obsidian-web
+      when: obsidian_enabled | bool
+      tags: [obsidian, web]
+
+    - role: ../../addons/backblaze-backup
+      when: backblaze_enabled | bool
+      tags: [backup, backblaze]
+
+    - role: ../../addons/cgit
+      when: cgit_enabled | bool
+      tags: [cgit, git]
+
+    - role: ../../addons/immich
+      when: immich_enabled | bool
+      tags: [immich, photos]
+
+    - role: ../../addons/crowdsec
+      when: crowdsec_enabled | bool
+      tags: [crowdsec, security]
+
+  post_tasks:
+    - name: Validate Caddy configuration
+      ansible.builtin.command:
+        cmd: caddy validate --config /etc/caddy/Caddyfile
+      register: caddy_validate
+      changed_when: false
+      failed_when: caddy_validate.rc != 0
+
+    - name: Reload Caddy to pick up new configs
+      ansible.builtin.systemd:
+        name: caddy
+        state: reloaded
+      when: caddy_validate.rc == 0
+
+    - name: Wait for Caddy to be ready
+      ansible.builtin.uri:
+        url: http://localhost:2019/config/
+        method: GET
+        timeout: 10
+      register: caddy_admin
+      retries: 3
+      delay: 2
+      until: caddy_admin.status == 200
+      failed_when: false
+
+    - name: Display addon deployment summary
+      ansible.builtin.debug:
+        msg:
+          - "Addon deployment completed successfully"
+          - "Obsidian Web: {{ 'ENABLED' if obsidian_enabled | bool else 'disabled' }}"
+          - "  - Vault path: {{ obsidian_vault_path }}"
+          - "  - URL prefix: {{ obsidian_url_prefix }}"
+          - "Backblaze Backup: {{ 'ENABLED' if backblaze_enabled | bool else 'disabled' }}"
+          - "  - Bucket: {{ backup_b2_bucket if backup_b2_bucket else 'Not configured' }}"
+          - "  - Schedule: {{ backup_schedule }}"
+          - "cgit: {{ 'ENABLED' if cgit_enabled | default(false) | bool else 'disabled' }}"
+          - "  - Repo path: {{ cgit_repo_path }}"
+          - "  - URL prefix: {{ cgit_url_prefix }}"
+          - "Immich: {{ 'ENABLED' if immich_enabled | default(false) | bool else 'disabled' }}"
+          - "  - Data path: {{ immich_data_path }}"
+          - "  - URL prefix: {{ immich_url_prefix }}"
+          - "CrowdSec: {{ 'ENABLED' if crowdsec_enabled | default(false) | bool else 'disabled' }}"
+          - "  - Data path: {{ crowdsec_data_path }}"
+          - "  - URL prefix: {{ crowdsec_url_prefix }}"
+          - "  - Agent port: {{ crowdsec_agent_port }}"
+
+    - name: Display post-deployment instructions
+      ansible.builtin.debug:
+        msg:
+          - "Next steps:"
+          - "1. Run health-check: /usr/local/bin/health-check"
+          - "{% if obsidian_enabled | bool %}2. Configure Syncthing: http://localhost:8384{% endif %}"
+          - "{% if backblaze_enabled | bool %}2. Configure B2: rclone config{% endif %}"
+          - "{% if cgit_enabled | bool %}2. Add git repos to {{ cgit_repo_path }}{% endif %}"
+          - "{% if immich_enabled | bool %}2. Create Immich admin: immich-create-admin{% endif %}"
+          - "{% if crowdsec_enabled | bool %}2. Configure CrowdSec: crowdsec-manage{% endif %}"

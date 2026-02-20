@@ -1,0 +1,12 @@
+{{ backup_log_path }}/*.log {
+    daily
+    missingok
+    rotate 30
+    compress
+    delaycompress
+    notifempty
+    create 0644 root root
+    postrotate
+        systemctl reload rsyslog || true
+    endscript
+}

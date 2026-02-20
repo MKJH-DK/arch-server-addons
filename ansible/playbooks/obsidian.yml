@@ -1,0 +1,60 @@
+---
+- name: Deploy Obsidian Web Addon Only
+  hosts: localhost
+  connection: local
+  become: yes
+  vars:
+    obsidian_enabled: true
+    obsidian_vault_path: "{{ obsidian_vault_path | default('/srv/obsidian/vault') }}"
+    obsidian_domain: "{{ obsidian_domain | default('') }}"
+    obsidian_url_prefix: "{{ obsidian_url_prefix | default('/wiki') }}"
+    obsidian_syncthing_user: "{{ obsidian_syncthing_user | default('root') }}"
+    obsidian_render_mode: "{{ obsidian_render_mode | default('client') }}"
+
+  pre_tasks:
+    - name: Verify base server installation
+      ansible.builtin.stat:
+        path: /usr/local/bin/health-check
+      register: health_check
+      failed_when: not health_check.stat.exists
+
+    - name: Create obsidian directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - /srv/obsidian
+        - /srv/obsidian/vault
+        - /srv/obsidian/site
+        - /etc/caddy/conf.d
+
+  roles:
+    - role: ../../addons/obsidian-web
+      tags: [obsidian, web]
+
+  post_tasks:
+    - name: Validate Caddy configuration
+      ansible.builtin.command:
+        cmd: caddy validate --config /etc/caddy/Caddyfile
+      register: caddy_validate
+      changed_when: false
+      failed_when: caddy_validate.rc != 0
+
+    - name: Reload Caddy
+      ansible.builtin.systemd:
+        name: caddy
+        state: reloaded
+      when: caddy_validate.rc == 0
+
+    - name: Display Obsidian setup information
+      ansible.builtin.debug:
+        msg:
+          - "Obsidian Web addon deployed successfully"
+          - "Vault path: {{ obsidian_vault_path }}"
+          - "Web URL: http://localhost{{ obsidian_url_prefix }}/"
+          - "Syncthing UI: http://localhost:8384"
+          - "Next steps:"
+          - "1. Open Syncthing UI and pair your devices"
+          - "2. Configure folder sync to {{ obsidian_vault_path }}"
+          - "3. Check sync status: ./scripts/sync-status.sh"

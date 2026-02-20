@@ -1,0 +1,364 @@
+#!/bin/bash
+# Obsidian Markdown Rendering Script
+# Converts markdown files to HTML for server-side rendering
+
+set -euo pipefail
+
+# Configuration
+VAULT_PATH="{{ obsidian_vault_path }}"
+SITE_PATH="{{ obsidian_site_path }}"
+RENDER_MODE="{{ obsidian_render_mode }}"
+LOG_FILE="/var/log/obsidian-render.log"
+
+# Logging
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+}
+
+# Check if required tools are available
+check_dependencies() {
+    local missing=()
+    
+    if ! command -v pandoc &> /dev/null; then
+        missing+=("pandoc")
+    fi
+    
+    if ! command -v inotifywait &> /dev/null; then
+        missing+=("inotifywait")
+    fi
+    
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        log "ERROR: Missing dependencies: ${missing[*]}"
+        log "Install with: pacman -S ${missing[*]}"
+        exit 1
+    fi
+}
+
+# Convert single markdown file to HTML
+convert_file() {
+    local src_file="$1"
+    local rel_path="${src_file#$VAULT_PATH/}"
+    local dest_file="$SITE_PATH/${rel_path%.md}.html"
+    local dest_dir="$(dirname "$dest_file")"
+    
+    # Skip excluded patterns
+    for pattern in {{ obsidian_exclude_patterns | tojson | replace('"', '') | replace(',', ' ') | replace('[', '') | replace(']', '') }}; do
+        if [[ "$rel_path" == $pattern ]]; then
+            log "Skipping excluded file: $rel_path"
+            return 0
+        fi
+    done
+    
+    # Create destination directory
+    mkdir -p "$dest_dir"
+    
+    # Convert markdown to HTML using pandoc
+    pandoc "$src_file" \
+        --from markdown \
+        --to html5 \
+        --standalone \
+        --metadata title="$(basename "$src_file" .md)" \
+        --css="/style.css" \
+        --template="$SITE_PATH/template.html" \
+        --output "$dest_file" \
+        2>> "$LOG_FILE" || {
+        log "ERROR: Failed to convert $src_file"
+        return 1
+    }
+    
+    log "Converted: $rel_path -> ${dest_file#$SITE_PATH/}"
+}
+
+# Convert all markdown files
+convert_all() {
+    log "Starting full conversion of vault..."
+    
+    local count=0
+    while IFS= read -r -d '' md_file; do
+        if convert_file "$md_file"; then
+            ((count++))
+        fi
+    done < <(find "$VAULT_PATH" -name "*.md" -type f -print0)
+    
+    log "Full conversion completed: $count files processed"
+}
+
+# Watch for changes and convert incrementally
+watch_changes() {
+    log "Starting file watcher on $VAULT_PATH..."
+    
+    while true; do
+        # Watch for create, modify, move, and delete events
+        inotifywait -r -e create,modify,moved_to,delete "$VAULT_PATH" --include '\.md$' 2>> "$LOG_FILE"
+        
+        log "File system change detected, running incremental conversion..."
+        
+        # Handle deleted files
+        while IFS= read -r -d '' md_file; do
+            local rel_path="${md_file#$VAULT_PATH/}"
+            local dest_file="$SITE_PATH/${rel_path%.md}.html"
+            
+            if [[ ! -f "$md_file" && -f "$dest_file" ]]; then
+                rm -f "$dest_file"
+                log "Removed deleted file: ${dest_file#$SITE_PATH/}"
+            fi
+        done < <(find "$VAULT_PATH" -name "*.md" -type f -print0)
+        
+        # Convert existing files
+        convert_all
+    done
+}
+
+# Create HTML template
+create_template() {
+    local template_file="$SITE_PATH/template.html"
+    
+    if [[ ! -f "$template_file" ]]; then
+        cat > "$template_file" << 'EOF'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>$title$</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            color: #333;
+        }
+        
+        h1, h2, h3 {
+            color: #2c3e50;
+            margin-top: 30px;
+            margin-bottom: 20px;
+        }
+        
+        h1 {
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+        
+        a {
+            color: #3498db;
+            text-decoration: none;
+        }
+        
+        a:hover {
+            text-decoration: underline;
+        }
+        
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: 'Monaco', 'Menlo', monospace;
+        }
+        
+        pre {
+            background-color: #f4f4f4;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        
+        pre code {
+            background-color: transparent;
+            padding: 0;
+        }
+        
+        blockquote {
+            border-left: 4px solid #3498db;
+            margin: 0;
+            padding-left: 20px;
+            color: #666;
+        }
+        
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 20px 0;
+        }
+        
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        
+        th {
+            background-color: #f4f4f4;
+        }
+        
+        .metadata {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            font-size: 0.9em;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="metadata">
+        <strong>Obsidian Vault</strong> | 
+        Generated: $(date) | 
+        <a href="/wiki/">Back to Index</a>
+    </div>
+    $body$
+</body>
+</html>
+EOF
+        log "Created HTML template: $template_file"
+    fi
+}
+
+# Create CSS file
+create_css() {
+    local css_file="$SITE_PATH/style.css"
+    
+    if [[ ! -f "$css_file" ]]; then
+        cat > "$css_file" << 'EOF'
+/* Obsidian Web Styles */
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+    line-height: 1.6;
+    color: #333;
+}
+
+.nav-header {
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: 5px;
+    margin-bottom: 30px;
+}
+
+.nav-header a {
+    color: #3498db;
+    text-decoration: none;
+    margin-right: 15px;
+}
+
+.nav-header a:hover {
+    text-decoration: underline;
+}
+
+.file-list {
+    background-color: #f8f9fa;
+    padding: 20px;
+    border-radius: 5px;
+    margin-bottom: 30px;
+}
+
+.file-list ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.file-list li {
+    margin-bottom: 5px;
+}
+
+.file-list a {
+    color: #3498db;
+    text-decoration: none;
+}
+
+.file-list a:hover {
+    text-decoration: underline;
+}
+EOF
+        log "Created CSS file: $css_file"
+    fi
+}
+
+# Create index file
+create_index() {
+    local index_file="$SITE_PATH/index.html"
+    
+    if [[ ! -f "$index_file" ]]; then
+        cat > "$index_file" << 'EOF'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Obsidian Vault</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="nav-header">
+        <strong>Obsidian Vault</strong>
+    </div>
+    
+    <div class="file-list">
+        <h2>Available Notes</h2>
+        <ul>
+            <!-- Files will be listed here -->
+        </ul>
+    </div>
+    
+    <script>
+        // This would need a backend API to list files
+        // For now, it's a placeholder
+    </script>
+</body>
+</html>
+EOF
+        log "Created index file: $index_file"
+    fi
+}
+
+# Main execution
+main() {
+    log "Obsidian render script starting..."
+    
+    # Check if vault exists
+    if [[ ! -d "$VAULT_PATH" ]]; then
+        log "ERROR: Vault path does not exist: $VAULT_PATH"
+        exit 1
+    fi
+    
+    # Create site directory
+    mkdir -p "$SITE_PATH"
+    
+    # Create template and CSS
+    create_template
+    create_css
+    create_index
+    
+    case "${1:-full}" in
+        "full")
+            convert_all
+            ;;
+        "watch")
+            convert_all  # Initial conversion
+            watch_changes
+            ;;
+        "single")
+            if [[ -z "${2:-}" ]]; then
+                log "ERROR: Single file mode requires filename argument"
+                exit 1
+            fi
+            convert_file "$2"
+            ;;
+        *)
+            echo "Usage: $0 {full|watch|single [filename]}"
+            exit 1
+            ;;
+    esac
+}
+
+# Check dependencies
+check_dependencies
+
+# Run main function
+main "$@"

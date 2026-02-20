@@ -1,0 +1,23 @@
+---
+# CrowdSec Addon - Handlers
+
+- name: restart crowdsec
+  ansible.builtin.systemd:
+    name: crowdsec
+    state: restarted
+
+- name: restart crowdsec-firewall
+  ansible.builtin.systemd:
+    name: crowdsec-firewall
+    state: restarted
+
+- name: reload caddy
+  ansible.builtin.systemd:
+    name: caddy
+    state: reloaded
+
+- name: restart crowdsec backup timer
+  ansible.builtin.systemd:
+    name: crowdsec-backup.timer
+    state: restarted
+    daemon_reload: true

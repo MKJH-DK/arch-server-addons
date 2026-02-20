@@ -1,0 +1,42 @@
+[Unit]
+Description=Immich Backup Service
+Documentation=man:immich-backup(8)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/immich-backup
+ExecReload=/bin/true
+
+# Security settings
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths={{ immich_data_path }} {{ immich_backup_path }}
+ProtectHome=yes
+RemoveIPC=yes
+
+# User
+User=root
+Group=root
+
+# Environment
+Environment="IMMICH_DATA_PATH={{ immich_data_path }}"
+Environment="BACKUP_PATH={{ immich_backup_path }}"
+
+# Resource limits
+MemoryMax=2G
+CPUQuota=80%
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=immich-backup
+
+# Timeout
+TimeoutStartSec=7200
+TimeoutStopSec=300
+
+[Install]
+WantedBy=multi-user.target

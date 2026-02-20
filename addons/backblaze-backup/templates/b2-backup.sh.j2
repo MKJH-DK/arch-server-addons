@@ -1,0 +1,240 @@
+#!/bin/bash
+# Backblaze B2 Backup Script
+# Performs incremental backup to Backblaze B2 using rclone
+
+set -euo pipefail
+
+# Configuration
+SCRIPT_NAME="$(basename "$0")"
+LOG_FILE="{{ backup_log_path }}/backup.log"
+CONFIG_FILE="{{ backup_config_path }}/config.yml"
+STAGING_PATH="{{ backup_staging_path }}"
+RCLONE_REMOTE="{{ rclone_config_name }}:{{ rclone_remote_name }}"
+BUCKET_NAME="{{ backup_b2_bucket }}"
+RETENTION_DAYS="{{ backup_retention_days }}"
+ENCRYPT="{{ backup_encrypt | lower }}"
+COMPRESSION="{{ backup_compression | lower }}"
+
+# Backup paths
+BACKUP_PATHS=({{ backup_paths | join(' ') }})
+
+# Exclude patterns
+EXCLUDE_PATTERNS=({{ backup_exclude_patterns | join(' ') }})
+
+# Logging
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$SCRIPT_NAME] $1" | tee -a "$LOG_FILE"
+}
+
+error() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$SCRIPT_NAME] ERROR: $1" | tee -a "$LOG_FILE" >&2
+    exit 1
+}
+
+# Check dependencies
+check_dependencies() {
+    local missing=()
+    
+    if ! command -v rclone &> /dev/null; then
+        missing+=("rclone")
+    fi
+    
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        error "Missing dependencies: ${missing[*]}"
+    fi
+}
+
+# Check rclone configuration
+check_rclone_config() {
+    if ! rclone config show {{ rclone_config_name }} &>/dev/null; then
+        error "rclone remote '{{ rclone_config_name }}' not configured. Run 'rclone config' first."
+    fi
+}
+
+# Create exclude file
+create_exclude_file() {
+    local exclude_file
+    exclude_file=$(mktemp)
+    
+    for pattern in "${EXCLUDE_PATTERNS[@]}"; do
+        echo "$pattern" >> "$exclude_file"
+    done
+    
+    echo "$exclude_file"
+}
+
+# Create snapshot if using Btrfs
+create_snapshot() {
+    if [[ "{{ backup_use_snapshots | lower }}" == "true" ]] && command -v snapper &>/dev/null; then
+        local snapshot_name="{{ backup_snapshot_prefix }}$(date +%Y%m%d-%H%M%S)"
+        
+        log "Creating Btrfs snapshot: $snapshot_name"
+        snapper create --description "$snapshot_name" --cleanup-algorithm number || {
+            log "Warning: Failed to create snapshot, continuing with live backup"
+        }
+    fi
+}
+
+# Perform backup
+perform_backup() {
+    local exclude_file
+    exclude_file=$(create_exclude_file)
+    
+    # Ensure staging directory exists
+    mkdir -p "$STAGING_PATH"
+    
+    log "Starting backup to B2 bucket: $BUCKET_NAME"
+    
+    # Build rclone command
+    local rclone_cmd="rclone sync"
+    
+    # Add compression if enabled
+    if [[ "$COMPRESSION" == "true" ]]; then
+        rclone_cmd="$rclone_cmd --compress"
+    fi
+    
+    # Add exclude file
+    rclone_cmd="$rclone_cmd --exclude-from $exclude_file"
+    
+    # Add progress and logging
+    rclone_cmd="$rclone_cmd --progress --stats-one-line --stats 30s"
+    
+    # Add dry-run for testing (remove for production)
+    # rclone_cmd="$rclone_cmd --dry-run"
+    
+    # Backup each path
+    for path in "${BACKUP_PATHS[@]}"; do
+        if [[ -d "$path" ]]; then
+            local remote_path="$RCLONE_REMOTE/$(basename "$path")"
+            log "Backing up $path to $remote_path"
+            
+            # shellcheck disable=SC2086
+            if $rclone_cmd "$path" "$remote_path" 2>&1 | tee -a "$LOG_FILE"; then
+                log "Successfully backed up $path"
+            else
+                error "Failed to backup $path"
+            fi
+        else
+            log "Warning: Path $path does not exist, skipping"
+        fi
+    done
+    
+    # Clean up exclude file
+    rm -f "$exclude_file"
+    
+    log "Backup completed successfully"
+}
+
+# Clean up old backups
+cleanup_old_backups() {
+    log "Cleaning up backups older than $RETENTION_DAYS days"
+    
+    # Clean up old snapshots
+    if [[ "{{ backup_use_snapshots | lower }}" == "true" ]] && command -v snapper &>/dev/null; then
+        snapper cleanup number --days "$RETENTION_DAYS" || {
+            log "Warning: Failed to cleanup old snapshots"
+        }
+    fi
+    
+    # Clean up remote backups (rclone doesn't have built-in cleanup by date)
+    # This would need custom implementation or use B2 lifecycle policies
+    log "Note: Configure B2 bucket lifecycle policies for automatic cleanup"
+}
+
+# Verify backup
+verify_backup() {
+    log "Verifying backup integrity"
+    
+    for path in "${BACKUP_PATHS[@]}"; do
+        if [[ -d "$path" ]]; then
+            local remote_path="$RCLONE_REMOTE/$(basename "$path")"
+            
+            # Check if remote directory exists and has content
+            if rclone lsd "$remote_path" &>/dev/null; then
+                local remote_size
+                remote_size=$(rclone size "$remote_path" --json | jq -r '.bytes // 0')
+                local local_size
+                local_size=$(du -sb "$path" | cut -f1)
+                
+                if [[ "$remote_size" -gt 0 ]]; then
+                    log "Verification passed for $(basename "$path"): $remote_size bytes"
+                else
+                    log "Warning: Remote backup appears empty for $(basename "$path")"
+                fi
+            else
+                log "Warning: Remote directory not found for $(basename "$path")"
+            fi
+        fi
+    done
+}
+
+# Send notification
+send_notification() {
+    local status="$1"
+    local message="$2"
+    
+    # This could be extended to send email, Slack, etc.
+    log "Notification: $status - $message"
+    
+    # Example: Send to system log
+    logger -t "$SCRIPT_NAME" "$status: $message"
+}
+
+# Main execution
+main() {
+    log "Starting backup process"
+    
+    # Check if running as root
+    if [[ $EUID -ne 0 ]]; then
+        error "This script must be run as root"
+    fi
+    
+    # Check dependencies
+    check_dependencies
+    
+    # Check rclone configuration
+    check_rclone_config
+    
+    # Create snapshot if enabled
+    create_snapshot
+    
+    # Perform backup
+    if perform_backup; then
+        send_notification "SUCCESS" "Backup completed successfully"
+        
+        # Verify backup
+        verify_backup
+        
+        # Cleanup old backups
+        cleanup_old_backups
+        
+        log "Backup process completed successfully"
+    else
+        send_notification "FAILURE" "Backup failed"
+        error "Backup process failed"
+    fi
+}
+
+# Handle script arguments
+case "${1:-backup}" in
+    "backup")
+        main
+        ;;
+    "verify")
+        verify_backup
+        ;;
+    "cleanup")
+        cleanup_old_backups
+        ;;
+    "help"|"-h"|"--help")
+        echo "Usage: $0 {backup|verify|cleanup|help}"
+        echo "  backup   - Perform full backup (default)"
+        echo "  verify   - Verify backup integrity"
+        echo "  cleanup  - Clean up old backups"
+        echo "  help     - Show this help"
+        exit 0
+        ;;
+    *)
+        error "Unknown command: $1. Use 'help' for usage."
+        ;;
+esac

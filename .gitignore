@@ -1,0 +1,40 @@
+# Ansible
+*.retry
+ansible/inventory/hosts.yml
+
+# Config files med sensitive data
+config/addons.env.local
+config/secrets/
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Backup files
+*.bak
+*.backup
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Shell
+*.sh.bak
+
+# Systemd
+*.service.d/
+*.timer.d/

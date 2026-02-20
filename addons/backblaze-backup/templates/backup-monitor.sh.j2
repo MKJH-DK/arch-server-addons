@@ -1,0 +1,251 @@
+#!/bin/bash
+# Backup Monitoring Script
+# Monitors backup status and sends alerts
+
+set -euo pipefail
+
+# Configuration
+SCRIPT_NAME="$(basename "$0")"
+LOG_FILE="{{ backup_log_path }}/backup-monitor.log"
+CONFIG_FILE="{{ backup_config_path }}/config.yml"
+ALERT_THRESHOLD="{{ backup_monitoring.alert_threshold | default(3) }}"
+
+# Logging
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$SCRIPT_NAME] $1" | tee -a "$LOG_FILE"
+}
+
+error() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$SCRIPT_NAME] ERROR: $1" | tee -a "$LOG_FILE" >&2
+}
+
+# Check backup service status
+check_service_status() {
+    local service_status
+    service_status=$(systemctl is-active {{ backup_timer_name }} 2>/dev/null || echo "inactive")
+    
+    if [[ "$service_status" != "active" ]]; then
+        log "WARNING: Backup timer is not active (status: $service_status)"
+        return 1
+    fi
+    
+    return 0
+}
+
+# Check recent backup logs
+check_recent_backups() {
+    local failed_backups=0
+    local successful_backups=0
+    
+    # Check last 7 days of backup logs
+    local since_date
+    since_date=$(date -d '7 days ago' '+%Y-%m-%d')
+    
+    # Parse backup logs for success/failure
+    while IFS= read -r line; do
+        if [[ "$line" =~ Backup\ process\ completed\ successfully ]]; then
+            ((successful_backups++))
+        elif [[ "$line" =~ ERROR:\ Backup\ failed ]]; then
+            ((failed_backups++))
+        fi
+    done < <(journalctl -u {{ backup_service_name }} --since "$since_date" --no-pager 2>/dev/null || true)
+    
+    log "Recent backup status (last 7 days): $successful_backups successful, $failed_backups failed"
+    
+    if [[ $failed_backups -ge $ALERT_THRESHOLD ]]; then
+        log "ALERT: Too many failed backups ($failed_backups >= $ALERT_THRESHOLD)"
+        return 1
+    fi
+    
+    return 0
+}
+
+# Check last backup time
+check_last_backup() {
+    local last_backup_time
+    last_backup_time=$(journalctl -u {{ backup_service_name }} --no-pager -n 1 --output=short-iso 2>/dev/null | cut -d' ' -f1-2 || echo "")
+    
+    if [[ -z "$last_backup_time" ]]; then
+        log "WARNING: No backup logs found"
+        return 1
+    fi
+    
+    # Convert to timestamp for comparison
+    local last_backup_ts
+    if command -v date &>/dev/null; then
+        last_backup_ts=$(date -d "$last_backup_time" +%s 2>/dev/null || echo "0")
+    else
+        last_backup_ts=0
+    fi
+    
+    local current_ts
+    current_ts=$(date +%s)
+    local hours_since_backup
+    hours_since_backup=$(((current_ts - last_backup_ts) / 3600))
+    
+    log "Last backup: $last_backup_time (${hours_since_backup} hours ago)"
+    
+    # Alert if no backup in 48 hours
+    if [[ $hours_since_backup -gt 48 ]]; then
+        log "ALERT: No backup in ${hours_since_backup} hours"
+        return 1
+    fi
+    
+    return 0
+}
+
+# Check disk space
+check_disk_space() {
+    local backup_paths=({{ backup_paths | join(' ') }})
+    local space_issues=0
+    
+    for path in "${backup_paths[@]}"; do
+        if [[ -d "$path" ]]; then
+            local usage
+            usage=$(df "$path" | awk 'NR==2 {print $5}' | sed 's/%//' || echo "0")
+            
+            if [[ $usage -gt 90 ]]; then
+                log "WARNING: Low disk space for $path (${usage}% used)"
+                ((space_issues++))
+            fi
+        fi
+    done
+    
+    if [[ $space_issues -gt 0 ]]; then
+        return 1
+    fi
+    
+    return 0
+}
+
+# Check rclone connectivity
+check_rclone_connectivity() {
+    if ! rclone lsd {{ rclone_config_name }}: &>/dev/null; then
+        log "WARNING: Cannot connect to Backblaze B2"
+        return 1
+    fi
+    
+    return 0
+}
+
+# Generate status report
+generate_status_report() {
+    local overall_status="$1"
+    local issues=("${@:2}")
+    
+    log "=== Backup Status Report ==="
+    log "Timestamp: $(date)"
+    log "Overall Status: $overall_status"
+    
+    if [[ ${#issues[@]} -gt 0 ]]; then
+        log "Issues found:"
+        for issue in "${issues[@]}"; do
+            log "  - $issue"
+        done
+    else
+        log "All checks passed"
+    fi
+    
+    log "=========================="
+    
+    # Send to system log
+    logger -t "$SCRIPT_NAME" "Backup status: $overall_status"
+}
+
+# Send alert (placeholder for future implementations)
+send_alert() {
+    local severity="$1"
+    local message="$2"
+    
+    # This could be extended to send email, Slack, etc.
+    log "ALERT [$severity]: $message"
+    
+    # Send to system log with priority
+    if [[ "$severity" == "CRITICAL" ]]; then
+        logger -p user.crit -t "$SCRIPT_NAME" "$message"
+    elif [[ "$severity" == "WARNING" ]]; then
+        logger -p user.warn -t "$SCRIPT_NAME" "$message"
+    fi
+}
+
+# Main monitoring function
+run_monitoring() {
+    local issues=()
+    local overall_status="OK"
+    
+    log "Starting backup monitoring checks"
+    
+    # Run all checks
+    if ! check_service_status; then
+        issues+=("Backup service not active")
+        overall_status="WARNING"
+    fi
+    
+    if ! check_recent_backups; then
+        issues+=("Multiple backup failures detected")
+        overall_status="CRITICAL"
+    fi
+    
+    if ! check_last_backup; then
+        issues+=("Backup is too old")
+        overall_status="WARNING"
+    fi
+    
+    if ! check_disk_space; then
+        issues+=("Low disk space")
+        overall_status="WARNING"
+    fi
+    
+    if ! check_rclone_connectivity; then
+        issues+=("Cannot connect to backup storage")
+        overall_status="CRITICAL"
+    fi
+    
+    # Generate report
+    generate_status_report "$overall_status" "${issues[@]}"
+    
+    # Send alerts if needed
+    if [[ "$overall_status" == "CRITICAL" ]]; then
+        send_alert "CRITICAL" "Critical backup issues detected: ${issues[*]}"
+    elif [[ "$overall_status" == "WARNING" ]]; then
+        send_alert "WARNING" "Backup warnings: ${issues[*]}"
+    fi
+    
+    return 0
+}
+
+# Main execution
+main() {
+    # Check if running as root
+    if [[ $EUID -ne 0 ]]; then
+        error "This script must be run as root"
+    fi
+    
+    # Run monitoring
+    run_monitoring
+}
+
+# Handle script arguments
+case "${1:-monitor}" in
+    "monitor")
+        main
+        ;;
+    "status")
+        # Just show current status without logging
+        check_service_status && echo "Service: OK" || echo "Service: FAILED"
+        check_recent_backups && echo "Recent backups: OK" || echo "Recent backups: FAILED"
+        check_last_backup && echo "Backup age: OK" || echo "Backup age: FAILED"
+        check_disk_space && echo "Disk space: OK" || echo "Disk space: FAILED"
+        check_rclone_connectivity && echo "Connectivity: OK" || echo "Connectivity: FAILED"
+        ;;
+    "help"|"-h"|"--help")
+        echo "Usage: $0 {monitor|status|help}"
+        echo "  monitor - Run full monitoring and send alerts (default)"
+        echo "  status  - Show current status without logging"
+        echo "  help    - Show this help"
+        exit 0
+        ;;
+    *)
+        error "Unknown command: $1. Use 'help' for usage."
+        ;;
+esac

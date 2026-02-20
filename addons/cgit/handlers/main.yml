@@ -1,0 +1,17 @@
+---
+# cgit Addon - Handlers
+
+- name: reload caddy
+  ansible.builtin.systemd:
+    name: caddy
+    state: reloaded
+
+- name: restart fcgiwrap
+  ansible.builtin.systemd:
+    name: fcgiwrap.socket
+    state: restarted
+
+- name: restart fcgiwrap service
+  ansible.builtin.systemd:
+    name: fcgiwrap.service
+    state: restarted

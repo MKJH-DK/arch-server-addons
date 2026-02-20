@@ -1,0 +1,41 @@
+---
+# cgit Addon Default Variables
+
+# Basic configuration
+cgit_enabled: "{{ cgit_enabled | default(false) }}"
+cgit_title: "{{ cgit_title | default('My Git Repos') }}"
+cgit_repo_path: "{{ cgit_repo_path | default('/srv/git') }}"
+cgit_url_prefix: "{{ cgit_url_prefix | default('/git') }}"
+
+# Web server configuration
+cgit_domain: ""
+cgit_caddy_config: "/etc/caddy/conf.d/cgit.caddy"
+cgit_fcgi_socket: "/run/cgit-fcgi.sock"
+
+# cgit configuration
+cgit_config_file: "/etc/cgitrc"
+cgit_cache_path: "/var/cache/cgit"
+cgit_log_path: "/var/log/cgit"
+
+# Repository settings
+cgit_max_repo_count: 100
+cgit_max_repo_desc_length: 80
+cgit_max_readme_size: 25600
+cgit_max_blob_size: 25600
+
+# Security settings
+cgit_enable_snapshots: true
+cgit_enable_stats: true
+cgit_enable_log: true
+cgit_enable_http_clone: true
+
+# Appearance
+cgit_theme: default
+cgit_logo: ""
+cgit_css: "/cgit.css"
+cgit_favicon: "/favicon.ico"
+
+# fcgiwrap configuration
+cgit_fcgi_user: "git"
+cgit_fcgi_group: "git"
+cgit_fcgi_processes: 2

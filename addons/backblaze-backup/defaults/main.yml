@@ -1,0 +1,45 @@
+---
+# Backblaze B2 Backup Addon Default Variables
+
+# Backup configuration
+backup_enabled: "{{ backblaze_enabled | default(false) }}"
+backup_b2_bucket: "{{ backup_b2_bucket | default('') }}"
+backup_schedule: "{{ backup_schedule | default('daily') }}"
+backup_retention_days: "{{ backup_retention_days | default(30) }}"
+backup_encrypt: "{{ backup_encrypt | default(true) }}"
+backup_paths: "{{ backup_paths | default(['/srv', '/etc/caddy']) }}"
+
+# Paths and directories
+backup_staging_path: "/srv/backups/staging"
+backup_log_path: "/var/log/backups"
+backup_config_path: "/etc/backups"
+backup_script_path: "/usr/local/bin/server-backup"
+
+# rclone configuration
+rclone_config_name: "backblaze"
+rclone_remote_name: "b2backup"
+rclone_config_file: "/root/.config/rclone/rclone.conf"
+
+# Systemd service configuration
+backup_service_name: "server-backup"
+backup_timer_name: "server-backup.timer"
+
+# Schedule configurations
+backup_daily_schedule: "02:00"
+backup_weekly_schedule: "Sun 02:00"
+backup_monthly_schedule: "*-*-01 02:00"
+
+# Backup options
+backup_compression: true
+backup_exclude_patterns:
+  - "*.tmp"
+  - "*.log"
+  - "*.cache"
+  - ".obsidian/cache"
+  - "node_modules/*"
+  - ".git/objects/*"
+
+# Snapshots
+backup_use_snapshots: true
+backup_snapshot_prefix: "backup-"
+snapshot_config_path: "/etc/snapper/configs"
