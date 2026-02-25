@@ -1,42 +1,60 @@
 ---
-# Obsidian Web Addon Default Variables
+# Obsidian Web Addon - Default Variables
 
-# Basic configuration
+# --- Paths ---
+
+# Where Syncthing syncs the vault to on the server
 obsidian_vault_path: /srv/obsidian/vault
-obsidian_site_path: /srv/obsidian/site
-obsidian_domain: ""
-obsidian_url_prefix: /wiki
-obsidian_syncthing_user: root
-obsidian_render_mode: client  # client or server
 
-# Syncthing configuration
+# Quartz static site generator installation directory
+obsidian_quartz_path: /srv/obsidian/quartz
+
+# Per-site Quartz config files (one .ts per site)
+obsidian_quartz_configs_path: /srv/obsidian/quartz-configs
+
+# Web root where built sites are served from
+# Each site gets its own subdirectory: web_root/<site-name>/
+obsidian_web_root: /var/www/sites
+
+# --- Syncthing ---
+
+# User that owns vault files and runs Syncthing
+# A dedicated service user (e.g. 'obsidian') is better for security,
+# but 'root' works on a single-user server
+obsidian_syncthing_user: root
+
+# Syncthing admin interface port (localhost only)
 obsidian_syncthing_port: 8384
-obsidian_syncthing_gui_port: 8384
+
+# Syncthing data directory (device keys, index, config)
 obsidian_syncthing_data_path: /var/lib/syncthing
 
-# Caddy configuration
+# --- Caddy ---
+
+# Path for the generated Caddy site configuration
 obsidian_caddy_config_path: /etc/caddy/conf.d/obsidian.caddy
-obsidian_site_title: "Obsidian Vault"
-obsidian_site_description: "Personal knowledge base"
 
-# Security settings
-obsidian_enable_auth: false
-obsidian_auth_user: ""
-obsidian_auth_password: ""
+# --- Build ---
 
-# Rendering settings
-obsidian_enable_search: true
-obsidian_enable_editing: false
-obsidian_theme: default
-obsidian_engine: "quartz"  # quartz or client
-obsidian_quartz_version: "v4.3.1"
-obsidian_build_mode: "production"
+# How often to rebuild sites (minutes)
+# Quartz reads vault/_public/<site>/ and outputs to web_root/<site>/
+obsidian_build_interval_minutes: 5
 
-# File filtering
-obsidian_exclude_patterns:
-  - ".obsidian/*"
-  - ".git/*"
-  - "*.tmp"
-  - "*.bak"
-  - ".DS_Store"
-  - "Thumbs.db"
+# --- Sites ---
+#
+# Define one entry per section of _public/ you want to publish as a website.
+# Each site builds from:  vault/_public/<name>/  →  web_root/<name>/
+#
+# Fields:
+#   name        - directory name under _public/ (must be a valid path segment)
+#   title       - site title shown in Quartz UI
+#   description - short description (used in meta tags and RSS)
+#   domain      - fully qualified domain name (e.g. "notes.example.com")
+#                 Leave empty for local/development access on port 8080
+#
+# Override this in your Ansible inventory for your actual setup.
+obsidian_sites:
+  - name: notes-public
+    title: "Notes"
+    description: "Public notes"
+    domain: ""

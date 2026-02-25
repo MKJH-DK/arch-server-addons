@@ -13,7 +13,8 @@
     scope: user
   become_user: "{{ obsidian_syncthing_user }}"
 
-- name: restart obsidian-render
+- name: restart quartz-build timer
   ansible.builtin.systemd:
-    name: obsidian-render
+    name: quartz-build.timer
     state: restarted
+    daemon_reload: true

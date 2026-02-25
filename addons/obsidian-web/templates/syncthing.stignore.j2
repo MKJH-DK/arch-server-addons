@@ -1,0 +1,33 @@
+// Syncthing ignore patterns for the Obsidian vault
+// Deployed by Ansible (obsidian-web addon) to: {{ obsidian_vault_path }}/.stignore
+//
+// These patterns prevent Syncthing from creating conflicts on files that change
+// independently on each device (workspace state, OS noise, editor temp files).
+//
+// IMPORTANT: plugins and their settings (.obsidian/plugins/, .obsidian/app.json,
+// etc.) are intentionally NOT ignored so they sync between devices.
+
+// ── Obsidian workspace state ──────────────────────────────────────────────────
+// These files track the open tabs / panel layout per device and differ between
+// desktop and mobile — syncing them causes constant conflict files.
+.obsidian/workspace
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.obsidian/workspaces.json
+
+// ── Syncthing conflict copies ─────────────────────────────────────────────────
+// Already-created conflict files from before this ignore pattern was in place.
+// Keeping this prevents new conflicts from syncing back as real content.
+*.sync-conflict-*
+
+// ── OS-generated noise ────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+// ── Editor and tool temp files ────────────────────────────────────────────────
+*.tmp
+*.bak
+*~
+.~lock.*

@@ -1,0 +1,16 @@
+[Unit]
+Description=Rebuild Quartz sites from Obsidian vault every {{ obsidian_build_interval_minutes }} minutes
+Requires=quartz-build.service
+
+[Timer]
+# First run 2 minutes after boot to allow Syncthing to finish its initial sync
+OnBootSec=2min
+OnUnitActiveSec={{ obsidian_build_interval_minutes }}min
+Unit=quartz-build.service
+
+# Persist missed runs across reboots (catches up if system was off during a
+# scheduled run, e.g. after a maintenance window)
+Persistent=true
+
+[Install]
+WantedBy=timers.target
