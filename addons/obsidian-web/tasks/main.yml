@@ -1,5 +1,11 @@
 ---
 # Obsidian Web Addon - Main Tasks
+#
+# Pipeline:
+#   Obsidian (device)  →  Syncthing  →  vault/_public/<site>/
+#   →  Quartz build  →  /var/www/sites/<site>/  →  Caddy
+
+# ── 1. Packages ──────────────────────────────────────────────────────────────
 
 - name: Install required packages
   ansible.builtin.pacman:
@@ -7,64 +13,203 @@
       - syncthing
       - nodejs
       - npm
+      - git
     state: present
   when: ansible_distribution == "Archlinux"
 
-- name: Create obsidian directories
-  ansible.builtin.file:
-    path: "{{ item }}"
-    state: directory
-    mode: '0755'
-    owner: "{{ obsidian_syncthing_user }}"
-    group: "{{ obsidian_syncthing_user }}"
-  loop:
-    - "{{ obsidian_vault_path }}"
-    - "{{ obsidian_site_path }}"
-    - "{{ obsidian_syncthing_data_path }}"
+# ── 2. Directory structure ────────────────────────────────────────────────────
 
-- name: Create Quartz build directory
+- name: Create vault directory
   ansible.builtin.file:
-    path: "{{ obsidian_site_path }}/quartz"
+    path: "{{ obsidian_vault_path }}"
     state: directory
-    mode: '0755'
+    mode: "0755"
     owner: "{{ obsidian_syncthing_user }}"
     group: "{{ obsidian_syncthing_user }}"
 
-- name: Create syncthing config directory
+- name: Create Quartz installation directory
   ansible.builtin.file:
-    path: "/{{ obsidian_syncthing_user }}/.config/syncthing"
+    path: "{{ obsidian_quartz_path }}"
     state: directory
-    mode: '0755'
+    mode: "0755"
     owner: "{{ obsidian_syncthing_user }}"
     group: "{{ obsidian_syncthing_user }}"
-  when: obsidian_syncthing_user != "root"
 
-- name: Configure Syncthing service
+- name: Create Quartz per-site configs directory
+  ansible.builtin.file:
+    path: "{{ obsidian_quartz_configs_path }}"
+    state: directory
+    mode: "0755"
+    owner: "{{ obsidian_syncthing_user }}"
+    group: "{{ obsidian_syncthing_user }}"
+
+- name: Create Syncthing data directory
+  ansible.builtin.file:
+    path: "{{ obsidian_syncthing_data_path }}"
+    state: directory
+    mode: "0700"
+    owner: "{{ obsidian_syncthing_user }}"
+    group: "{{ obsidian_syncthing_user }}"
+
+- name: Create web root directory for each site
+  ansible.builtin.file:
+    path: "{{ obsidian_web_root }}/{{ item.name }}"
+    state: directory
+    mode: "0755"
+    owner: "{{ obsidian_syncthing_user }}"
+    group: "{{ obsidian_syncthing_user }}"
+  loop: "{{ obsidian_sites }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Create vault _public directories (source for each site)
+  ansible.builtin.file:
+    path: "{{ obsidian_vault_path }}/_public/{{ item.name }}"
+    state: directory
+    mode: "0755"
+    owner: "{{ obsidian_syncthing_user }}"
+    group: "{{ obsidian_syncthing_user }}"
+  loop: "{{ obsidian_sites }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+# ── 3. Vault initialisation (safe — never overwrites existing files) ──────────
+
+- name: Create vault README (first run only)
+  ansible.builtin.copy:
+    dest: "{{ obsidian_vault_path }}/README.md"
+    mode: "0644"
+    owner: "{{ obsidian_syncthing_user }}"
+    group: "{{ obsidian_syncthing_user }}"
+    force: false
+    content: |
+      # Obsidian Vault
+
+      This vault is synced between devices via Syncthing.
+
+      ## Structure
+
+      | Folder | Purpose |
+      |--------|---------|
+      | `_public/` | Published as websites (Quartz builds from here) |
+      | `_private/` | Private notes — never served |
+      | `_repos/` | Git repositories |
+      | `_shared/` | Assets and templates shared across notes |
+      | `00-inbox/` | Unprocessed notes |
+      | `01-projects/` | Active projects |
+      | `03-resources/` | Reference material |
+      | `04-archive/` | Archived notes |
+
+      **Private by default.** Only content in `_public/` is ever published.
+
+- name: Create placeholder index per site (first run only)
+  ansible.builtin.copy:
+    dest: "{{ obsidian_vault_path }}/_public/{{ item.name }}/index.md"
+    mode: "0644"
+    owner: "{{ obsidian_syncthing_user }}"
+    group: "{{ obsidian_syncthing_user }}"
+    force: false
+    content: |
+      ---
+      title: Welcome to {{ item.title }}
+      ---
+
+      # {{ item.title }}
+
+      {{ item.description }}
+
+      Add your Markdown notes to `_public/{{ item.name }}/` and they will
+      appear here after the next Quartz build.
+  loop: "{{ obsidian_sites }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Deploy Syncthing ignore patterns
   ansible.builtin.template:
-    src: syncthing.service.j2
-    dest: /etc/systemd/user/syncthing.service
-    mode: '0644'
-  when: obsidian_syncthing_user == "root"
+    src: syncthing.stignore.j2
+    dest: "{{ obsidian_vault_path }}/.stignore"
+    mode: "0644"
+    owner: "{{ obsidian_syncthing_user }}"
+    group: "{{ obsidian_syncthing_user }}"
 
-- name: Enable and start Syncthing service
+# ── 4. Quartz installation ────────────────────────────────────────────────────
+
+- name: Clone Quartz v4 static site generator
+  ansible.builtin.git:
+    repo: https://github.com/jackyzha0/quartz.git
+    dest: "{{ obsidian_quartz_path }}"
+    version: v4
+    update: false
+  become_user: "{{ obsidian_syncthing_user }}"
+
+- name: Install Quartz Node.js dependencies
+  # ansible.builtin.command is used here because community.general.npm does not
+  # reliably handle the workspace-style install that Quartz requires.
+  ansible.builtin.command:
+    cmd: npm install
+    chdir: "{{ obsidian_quartz_path }}"
+    creates: "{{ obsidian_quartz_path }}/node_modules/.package-lock.json"
+  become_user: "{{ obsidian_syncthing_user }}"
+
+# ── 5. Per-site Quartz configuration files ────────────────────────────────────
+
+- name: Deploy per-site Quartz configuration
+  ansible.builtin.template:
+    src: quartz.config.ts.j2
+    dest: "{{ obsidian_quartz_configs_path }}/{{ item.name }}.ts"
+    mode: "0644"
+    owner: "{{ obsidian_syncthing_user }}"
+    group: "{{ obsidian_syncthing_user }}"
+  loop: "{{ obsidian_sites }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+# ── 6. Build script ───────────────────────────────────────────────────────────
+
+- name: Deploy Quartz multi-site build script
+  ansible.builtin.template:
+    src: build-sites.sh.j2
+    dest: /usr/local/bin/build-quartz-sites
+    mode: "0755"
+    owner: root
+    group: root
+
+# ── 7. Systemd build timer ───────────────────────────────────────────────────
+
+- name: Deploy Quartz build systemd service unit
+  ansible.builtin.template:
+    src: quartz-build.service.j2
+    dest: /etc/systemd/system/quartz-build.service
+    mode: "0644"
+    owner: root
+    group: root
+
+- name: Deploy Quartz build systemd timer unit
+  ansible.builtin.template:
+    src: quartz-build.timer.j2
+    dest: /etc/systemd/system/quartz-build.timer
+    mode: "0644"
+    owner: root
+    group: root
+
+- name: Enable and start Quartz build timer
+  ansible.builtin.systemd:
+    name: quartz-build.timer
+    state: started
+    enabled: true
+    daemon_reload: true
+
+# ── 8. Syncthing ──────────────────────────────────────────────────────────────
+
+- name: Enable and start Syncthing user service
   ansible.builtin.systemd:
     name: syncthing
     state: started
     enabled: true
     scope: user
   become_user: "{{ obsidian_syncthing_user }}"
-  when: obsidian_syncthing_user == "root"
 
-- name: Enable and start Syncthing service (non-root)
-  ansible.builtin.systemd:
-    name: syncthing
-    state: started
-    enabled: true
-    scope: user
-  become_user: "{{ obsidian_syncthing_user }}"
-  when: obsidian_syncthing_user != "root"
-
-- name: Wait for Syncthing to initialize
+- name: Wait for Syncthing admin API to become available
   ansible.builtin.uri:
     url: "http://127.0.0.1:{{ obsidian_syncthing_port }}/rest/system/status"
     method: GET
@@ -75,115 +220,36 @@
   until: syncthing_status.status == 200
   failed_when: false
 
-- name: Deploy Caddy configuration for Obsidian
+# ── 9. Caddy configuration ────────────────────────────────────────────────────
+
+- name: Deploy Caddy site configuration
   ansible.builtin.template:
     src: obsidian.caddy.j2
     dest: "{{ obsidian_caddy_config_path }}"
-    mode: '0644'
+    mode: "0644"
   notify: reload caddy
 
-- name: Install Quartz
-  ansible.builtin.shell: |
-    cd "{{ obsidian_site_path }}/quartz"
-    if [[ ! -d ".git" ]]; then
-        git clone https://github.com/jackyzha0/quartz.git .
-    else
-        git pull origin main
-    fi
-    npm install
-  args:
-    creates: "{{ obsidian_site_path }}/quartz/package.json"
-  become_user: "{{ obsidian_syncthing_user }}"
+# ── 10. Initial build ─────────────────────────────────────────────────────────
 
-- name: Configure Quartz
-  ansible.builtin.template:
-    src: quartz.config.js.j2
-    dest: "{{ obsidian_site_path }}/quartz/quartz.config.js"
-    mode: '0644'
-    owner: "{{ obsidian_syncthing_user }}"
-    group: "{{ obsidian_syncthing_user }}"
+- name: Run initial Quartz build for all sites
+  ansible.builtin.command:
+    cmd: /usr/local/bin/build-quartz-sites
+  changed_when: true
+  # changed_when: true because the build always produces fresh output
 
-- name: Create Quartz build script
-  ansible.builtin.template:
-    src: build-quartz.sh.j2
-    dest: /usr/local/bin/build-quartz
-    mode: '0755'
-    owner: root
-    group: root
+# ── 11. Setup summary ─────────────────────────────────────────────────────────
 
-- name: Create Quartz build watcher service
-  ansible.builtin.template:
-    src: quartz-watcher.service.j2
-    dest: /etc/systemd/system/quartz-watcher.service
-    mode: '0644'
-    owner: root
-    group: root
-
-- name: Create Quartz build watcher timer
-  ansible.builtin.template:
-    src: quartz-watcher.timer.j2
-    dest: /etc/systemd/system/quartz-watcher.timer
-    mode: '0644'
-    owner: root
-    group: root
-
-- name: Enable and start Quartz build watcher
-  ansible.builtin.systemd:
-    name: quartz-watcher.timer
-    state: started
-    enabled: true
-    daemon_reload: true
-
-- name: Create vault README file
-  ansible.builtin.copy:
-    content: |
-      # Obsidian Vault
-      
-      This is your Obsidian vault synced via Syncthing.
-      
-      ## Access
-      
-      - **Web Interface**: http://localhost{{ obsidian_url_prefix }}/
-      - **Syncthing Admin**: http://localhost:8384/
-      
-      ## Setup
-      
-      1. Install Obsidian on your devices
-      2. Open Syncthing admin interface
-      3. Add your devices using their device IDs
-      4. Configure folder sync to this directory
-      5. Open this folder in Obsidian
-      
-      ## Notes
-      
-      - Changes are synced automatically via Syncthing
-      - Web interface updates in real-time
-      - .obsidian/ folder is hidden from web interface
-      
-    dest: "{{ obsidian_vault_path }}/README.md"
-    mode: '0644'
-    owner: "{{ obsidian_syncthing_user }}"
-    group: "{{ obsidian_syncthing_user }}"
-
-- name: Set proper permissions for vault directory
-  ansible.builtin.file:
-    path: "{{ obsidian_vault_path }}"
-    state: directory
-    mode: '0755'
-    owner: "{{ obsidian_syncthing_user }}"
-    group: "{{ obsidian_syncthing_user }}"
-    recurse: true
-
-- name: Display setup information
+- name: Display post-deployment information
   ansible.builtin.debug:
-    msg:
-      - "Obsidian Web addon configured successfully"
-      - "Vault path: {{ obsidian_vault_path }}"
-      - "Web URL: http://localhost{{ obsidian_url_prefix }}/"
-      - "Syncthing UI: http://localhost:8384/"
-      - "Engine: {{ obsidian_engine }}"
-      - "Next steps:"
-      - "1. Open Syncthing UI and pair your devices"
-      - "2. Configure folder sync to {{ obsidian_vault_path }}"
-      - "3. Start using Obsidian on your devices"
-      - "4. Quartz will automatically build and serve your vault"
+    msg: >-
+      Obsidian Web addon deployed.
+      Vault: {{ obsidian_vault_path }}
+      Public content source: {{ obsidian_vault_path }}/_public/
+      Syncthing admin: http://localhost:{{ obsidian_syncthing_port }}
+      Sites: {% for site in obsidian_sites %}{{ site.name }}
+      ({% if site.domain %}https://{{ site.domain }}{% else %}http://localhost:8080/{{ site.name }}/{% endif %})
+      {% endfor %}
+      Next steps -
+      1. Open Syncthing at http://localhost:{{ obsidian_syncthing_port }} and pair your devices.
+      2. Configure vault folder sync to {{ obsidian_vault_path }}.
+      3. Add notes to _public/<site>/ on any device; they publish on the next build cycle.

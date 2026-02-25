@@ -1,0 +1,28 @@
+[Unit]
+Description=Build Quartz sites from Obsidian vault _public/ sections
+Documentation=https://github.com/jackyzha0/quartz
+# Wait for Syncthing to be running so the vault is up to date before building
+After=network.target syncthing.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/build-quartz-sites
+User={{ obsidian_syncthing_user }}
+Group={{ obsidian_syncthing_user }}
+
+# Logging to the journal (build script also writes to /var/log/quartz-build.log)
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=quartz-build
+
+# Security hardening
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths={{ obsidian_quartz_path }} {{ obsidian_quartz_configs_path }} {{ obsidian_web_root }} /var/log
+ProtectHome=yes
+RemoveIPC=yes
+
+# Resource limits — Quartz/Node can be memory-hungry during builds
+MemoryMax=1G
+CPUQuota=80%
