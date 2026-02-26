@@ -200,14 +200,32 @@
     daemon_reload: true
 
 # ── 8. Syncthing ──────────────────────────────────────────────────────────────
+# Uses syncthing@<user>.service (system-scope), not a user-scope unit.
+# System-scope runs at boot regardless of login session — critical for a server.
+# A systemd dropin adds UMask=0077 so vault files are created 600/700, not 644.
 
-- name: Enable and start Syncthing user service
+- name: Create Syncthing systemd dropin directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/syncthing@.service.d
+    state: directory
+    mode: "0755"
+    owner: root
+    group: root
+
+- name: Deploy Syncthing systemd security dropin (UMask=0077)
+  ansible.builtin.template:
+    src: syncthing-override.conf.j2
+    dest: /etc/systemd/system/syncthing@.service.d/obsidian.conf
+    mode: "0644"
+    owner: root
+    group: root
+
+- name: Enable and start Syncthing system service
   ansible.builtin.systemd:
-    name: syncthing
+    name: "syncthing@{{ obsidian_syncthing_user }}.service"
     state: started
     enabled: true
-    scope: user
-  become_user: "{{ obsidian_syncthing_user }}"
+    daemon_reload: true
 
 - name: Wait for Syncthing admin API to become available
   ansible.builtin.uri:

@@ -23,6 +23,11 @@
         Content-Security-Policy  "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'"
     }
 
+    # Quartz generates HTML files as `page.html` on disk but internal links
+    # use extensionless paths (`/page`). try_files rewrites the URI so Caddy
+    # finds the correct file before falling through to file_server.
+    try_files {path} {path}.html {path}/index.html
+
     file_server
 
     # Health check endpoint (used by deploy script to verify the site is up)
@@ -49,6 +54,7 @@
 {% for site in local_sites %}
     handle /{{ site.name }}/* {
         root * {{ obsidian_web_root }}/{{ site.name }}
+        try_files {path} {path}.html {path}/index.html
         file_server
     }
 

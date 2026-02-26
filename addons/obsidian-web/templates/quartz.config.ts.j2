@@ -18,12 +18,17 @@ const config: QuartzConfig = {
     // Never publish anything outside the configured _public/<site> directory.
     // These patterns guard against accidentally including system files if
     // Quartz is ever pointed at a broader directory by mistake.
+    // Note: filter plugins only act on Markdown — non-Markdown files (canvas,
+    // PDF, images) are emitted regardless of ExplicitPublish, so we exclude
+    // them here as a mandatory second layer.
     ignorePatterns: [
       ".obsidian",
       ".git",
       "_private",
       "_repos",
       "node_modules",
+      "**/*.canvas",   // Obsidian canvas files — binary, not publishable as HTML
+      "**/*.pdf",      // PDFs bypass ExplicitPublish filter; exclude explicitly
     ],
     defaultDateType: "modified",
     theme: {
@@ -81,7 +86,11 @@ const config: QuartzConfig = {
       Plugin.Latex({ renderEngine: "katex" }),
     ],
     filters: [
-      Plugin.RemoveDrafts(),
+      // ExplicitPublish = opt-in model: only notes with `publish: true` in
+      // frontmatter are built. This enforces "private by default" — a note
+      // accidentally placed in _public/ will not be published without the flag.
+      // (RemoveDrafts would be opt-out: publish everything unless draft:true)
+      Plugin.ExplicitPublish(),
     ],
     emitters: [
       Plugin.AliasRedirects(),

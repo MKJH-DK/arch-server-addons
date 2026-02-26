@@ -15,16 +15,31 @@
 .obsidian/workspace-mobile.json
 .obsidian/workspaces.json
 
+// ── Obsidian internal directories ─────────────────────────────────────────────
+// .trash — Obsidian's recycle bin; device-local, not meaningful to sync
+// .vault-stats — Obsidian analytics/usage tracking; device-local
+.trash
+.vault-stats
+
+// ── Syncthing internal directories ────────────────────────────────────────────
+// These are created by Syncthing itself and must never sync to other devices.
+// .stfolder — marker file Syncthing uses to detect the folder root
+// .stversions — local version history (each device keeps its own)
+.stfolder
+.stversions
+
 // ── Syncthing conflict copies ─────────────────────────────────────────────────
 // Already-created conflict files from before this ignore pattern was in place.
 // Keeping this prevents new conflicts from syncing back as real content.
 *.sync-conflict-*
 
 // ── OS-generated noise ────────────────────────────────────────────────────────
-.DS_Store
-Thumbs.db
-desktop.ini
-ehthumbs.db
+// (?d) prefix: delete the file on the receiving device if the sender doesn't
+// have it. This cleans up stray macOS/Windows metadata files on the Linux server.
+(?d).DS_Store
+(?d)Thumbs.db
+(?d)desktop.ini
+(?d)ehthumbs.db
 
 // ── Editor and tool temp files ────────────────────────────────────────────────
 *.tmp

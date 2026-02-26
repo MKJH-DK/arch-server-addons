@@ -1,0 +1,10 @@
+# Syncthing systemd dropin — security hardening
+# Deployed by Ansible (obsidian-web addon) to:
+#   /etc/systemd/system/syncthing@.service.d/obsidian.conf
+#
+# UMask=0077 ensures vault files and directories created by Syncthing are
+# accessible only to the owner (mode 600 for files, 700 for directories).
+# Without this, Syncthing defaults to UMask=0022, leaving files world-readable.
+
+[Service]
+UMask=0077
