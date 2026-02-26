@@ -109,20 +109,14 @@ echo "  Immich: ${IMMICH_ENABLED:-false}"
 echo "  CrowdSec: ${CROWDSEC_ENABLED:-false}"
 echo ""
 
-# Ensure a valid locale is exported before invoking Ansible.
-# Python (and therefore Ansible) calls locale.setlocale() at startup and
-# aborts with "unsupported locale setting" when LANG/LC_ALL point to a
-# locale that has not yet been generated on this machine.
-# C.UTF-8 is always available without running locale-gen, so it is the
-# safest bootstrap value.  The playbook pre_tasks will then generate
-# en_US.UTF-8 and write /etc/locale.conf for every subsequent run.
-export LANG="${LANG:-C.UTF-8}"
-export LC_ALL="${LC_ALL:-C.UTF-8}"
-if ! python3 -c "import locale; locale.setlocale(locale.LC_ALL, '')" 2>/dev/null; then
-    log_warning "Current locale '${LANG}' is not usable — forcing LANG=C.UTF-8"
-    export LANG=C.UTF-8
-    export LC_ALL=C.UTF-8
-fi
+# Set a guaranteed locale before invoking Ansible.
+# Python aborts at startup with "unsupported locale setting" when LANG or
+# LC_ALL name a locale that has not been generated on this machine.
+# LC_ALL=C / LANG=C are POSIX-mandated and always present without running
+# locale-gen.  The playbook pre_tasks generate en_US.UTF-8 and write
+# /etc/locale.conf so that subsequent runs use the proper system locale.
+export LC_ALL=C
+export LANG=C
 
 # Run addon playbook
 log_info "Deploying addons..."
