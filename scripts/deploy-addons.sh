@@ -109,6 +109,15 @@ echo "  Immich: ${IMMICH_ENABLED:-false}"
 echo "  CrowdSec: ${CROWDSEC_ENABLED:-false}"
 echo ""
 
+# Set a guaranteed locale before invoking Ansible.
+# Python aborts at startup with "unsupported locale setting" when LANG or
+# LC_ALL name a locale that has not been generated on this machine.
+# LC_ALL=C / LANG=C are POSIX-mandated and always present without running
+# locale-gen.  The playbook pre_tasks generate en_US.UTF-8 and write
+# /etc/locale.conf so that subsequent runs use the proper system locale.
+export LC_ALL=C
+export LANG=C
+
 # Run addon playbook
 log_info "Deploying addons..."
 cd "$PROJECT_DIR/ansible"
