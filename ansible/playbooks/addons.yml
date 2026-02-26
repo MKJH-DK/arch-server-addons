@@ -47,6 +47,26 @@
     crowdsec_caddy_enabled: "{{ crowdsec_caddy_enabled | default(true) }}"
 
   pre_tasks:
+    - name: Ensure en_US.UTF-8 locale is present in locale.gen
+      ansible.builtin.lineinfile:
+        path: /etc/locale.gen
+        regexp: '^#?\s*en_US\.UTF-8\s+UTF-8'
+        line: 'en_US.UTF-8 UTF-8'
+      register: locale_gen_changed
+
+    - name: Generate locales
+      ansible.builtin.command:
+        cmd: locale-gen
+      when: locale_gen_changed.changed
+      changed_when: true
+
+    - name: Set system locale
+      ansible.builtin.copy:
+        content: "LANG=en_US.UTF-8\n"
+        dest: /etc/locale.conf
+        mode: '0644'
+        force: false
+
     - name: Verify base server installation
       ansible.builtin.stat:
         path: /usr/local/bin/health-check
