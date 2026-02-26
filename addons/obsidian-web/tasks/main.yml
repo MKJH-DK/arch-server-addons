@@ -150,6 +150,9 @@
     chdir: "{{ obsidian_quartz_path }}"
     creates: "{{ obsidian_quartz_path }}/node_modules/.package-lock.json"
   become_user: "{{ obsidian_syncthing_user }}"
+  environment:
+    LANG: en_US.UTF-8
+    LC_ALL: en_US.UTF-8
 
 # ── 5. Per-site Quartz configuration files ────────────────────────────────────
 
@@ -236,6 +239,9 @@
     cmd: /usr/local/bin/build-quartz-sites
   changed_when: true
   # changed_when: true because the build always produces fresh output
+  environment:
+    LANG: en_US.UTF-8
+    LC_ALL: en_US.UTF-8
 
 # ── 11. Setup summary ─────────────────────────────────────────────────────────
 
