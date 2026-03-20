@@ -129,20 +129,26 @@ echo "    ShellGPT: ${SHELLGPT_ENABLED:-false}"
 echo "    Codex: ${CODEX_ENABLED:-false}"
 echo ""
 
-# Ansible requires UTF-8 locale. Try en_US.UTF-8 first, fall back to C.UTF-8.
-if locale -a 2>/dev/null | grep -qi 'en_US.utf-\?8'; then
-    export LC_ALL=en_US.UTF-8
-    export LANG=en_US.UTF-8
-elif locale -a 2>/dev/null | grep -qi 'C.utf-\?8'; then
-    export LC_ALL=C.UTF-8
-    export LANG=C.UTF-8
+# Ansible requires UTF-8 locale. Find any available UTF-8 locale.
+UTF8_LOCALE=""
+for loc in en_US.UTF-8 C.UTF-8 da_DK.UTF-8; do
+    if locale -a 2>/dev/null | grep -qi "^${loc//./.}$\|^${loc}$"; then
+        UTF8_LOCALE="$loc"
+        break
+    fi
+done
+
+if [[ -z "$UTF8_LOCALE" ]]; then
+    # Pick first available UTF-8 locale
+    UTF8_LOCALE="$(locale -a 2>/dev/null | grep -i 'utf-\?8' | head -1)"
+fi
+
+if [[ -n "$UTF8_LOCALE" ]]; then
+    export LC_ALL="$UTF8_LOCALE"
+    export LANG="$UTF8_LOCALE"
 else
-    # Generate en_US.UTF-8 if missing
-    log_warning "No UTF-8 locale found, generating en_US.UTF-8..."
-    sed -i 's/^#en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen 2>/dev/null || true
-    locale-gen 2>/dev/null || true
-    export LC_ALL=en_US.UTF-8
-    export LANG=en_US.UTF-8
+    log_error "No UTF-8 locale available. Run: sudo locale-gen"
+    exit 1
 fi
 
 # Run addon playbook
