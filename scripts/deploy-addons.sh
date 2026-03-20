@@ -92,13 +92,26 @@ if ! command -v ansible-playbook &> /dev/null; then
     exit 1
 fi
 
-# Check base inventory exists
-BASE_INVENTORY="/root/arch/src/ansible/inventory/hosts.yml"
-if [[ ! -f "$BASE_INVENTORY" ]]; then
-    log_error "Base Ansible inventory not found: $BASE_INVENTORY"
+# Find base inventory (check common locations)
+BASE_INVENTORY=""
+for candidate in \
+    "$HOME/arch-server/src/ansible/inventory/hosts.yml" \
+    "/root/arch-server/src/ansible/inventory/hosts.yml" \
+    "/root/arch/src/ansible/inventory/hosts.yml" \
+    "$HOME/arch/src/ansible/inventory/hosts.yml"; do
+    if [[ -f "$candidate" ]]; then
+        BASE_INVENTORY="$candidate"
+        break
+    fi
+done
+
+if [[ -z "$BASE_INVENTORY" ]]; then
+    log_error "Base Ansible inventory not found"
+    log_info "Searched: ~/arch-server/, /root/arch-server/, /root/arch/"
     log_info "Ensure base server is deployed first"
     exit 1
 fi
+log_info "Using base inventory: $BASE_INVENTORY"
 
 # Display what will be deployed
 log_info "Addon deployment plan:"
