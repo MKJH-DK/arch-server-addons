@@ -212,13 +212,12 @@
 
 # ── 8. Syncthing ──────────────────────────────────────────────────────────────
 
-- name: Enable and start Syncthing user service
+- name: Enable and start Syncthing system service for {{ obsidian_syncthing_user }}
   ansible.builtin.systemd:
-    name: syncthing
+    name: "syncthing@{{ obsidian_syncthing_user }}"
     state: started
     enabled: true
-    scope: user
-  become_user: "{{ obsidian_syncthing_user }}"
+    daemon_reload: true
 
 - name: Wait for Syncthing admin API to become available
   ansible.builtin.uri:
