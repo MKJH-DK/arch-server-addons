@@ -2,7 +2,7 @@
 Description=Daily CrowdSec backup
 
 [Timer]
-OnCalendar={{ crowdsec_backup_schedule }}
+OnCalendar=*-*-* 03:00:00
 Persistent=true
 RandomizedDelaySec=300
 
