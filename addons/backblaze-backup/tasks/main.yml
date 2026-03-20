@@ -83,7 +83,7 @@
 
 - name: Validate rclone configuration (if exists)
   ansible.builtin.command:
-    cmd: rclone lsd {{ rclone_config_name }}:
+    cmd: "rclone lsd {{ rclone_config_name }}:"
   register: rclone_test
   changed_when: false
   failed_when: false
