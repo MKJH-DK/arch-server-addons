@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily CrowdSec backup
+
+[Timer]
+OnCalendar={{ crowdsec_backup_schedule }}
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

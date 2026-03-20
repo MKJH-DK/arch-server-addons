@@ -1,0 +1,8 @@
+[Unit]
+Description=CrowdSec configuration and decisions backup
+After=crowdsec.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/crowdsec-backup
+User=root

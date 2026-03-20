@@ -1,0 +1,12 @@
+{{ crowdsec_log_path }}/*.log {
+    daily
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0640 root root
+    postrotate
+        systemctl reload crowdsec 2>/dev/null || true
+    endscript
+}
