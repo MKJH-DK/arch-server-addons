@@ -50,11 +50,17 @@
         dest: /tmp/
         remote_src: true
 
+    - name: Find extracted CrowdSec directory
+      ansible.builtin.shell: "find /tmp -maxdepth 1 -type d -name 'crowdsec*' | head -1"
+      register: cs_dir
+      changed_when: false
+
     - name: Install CrowdSec from extracted release
       ansible.builtin.shell: |
-        cd /tmp/crowdsec-{{ cs_release.json.tag_name | regex_replace('^v', '') }}* && ./wizard.sh --installdir /usr --datadir /var/lib/crowdsec/data --configdir /etc/crowdsec --bininstall
+        cd "{{ cs_dir.stdout | trim }}" && bash ./wizard.sh --bininstall
       args:
         creates: /usr/bin/cscli
+      when: cs_dir.stdout | trim | length > 0
 
 - name: Create CrowdSec directories
   ansible.builtin.file:
