@@ -22,7 +22,6 @@
     state: started
     enabled: true
     daemon_reload: true
-  when: docker_check.rc != 0
 
 - name: Add admin user to docker group
   ansible.builtin.user:
