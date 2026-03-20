@@ -35,17 +35,16 @@
     owner: root
     group: root
 
-- name: Load iptable_nat kernel module
-  community.general.modprobe:
-    name: iptable_nat
-    state: present
+- name: Load iptable kernel modules (best effort)
+  ansible.builtin.command:
+    cmd: modprobe {{ item }}
+  loop:
+    - iptable_nat
+    - iptable_filter
+  changed_when: false
+  failed_when: false
 
-- name: Load iptable_filter kernel module
-  community.general.modprobe:
-    name: iptable_filter
-    state: present
-
-- name: Ensure iptable modules load on boot
+- name: Ensure iptable modules load on boot (best effort)
   ansible.builtin.copy:
     dest: /etc/modules-load.d/docker.conf
     content: |
