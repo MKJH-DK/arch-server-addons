@@ -16,8 +16,8 @@
       - slirp4netns
     state: present
 
-- name: Install podman-compose via pip
-  ansible.builtin.pip:
+- name: Install podman-compose via pacman
+  ansible.builtin.pacman:
     name: podman-compose
     state: present
 
