@@ -16,6 +16,37 @@
     state: present
   when: docker_check.rc != 0
 
+- name: Configure Docker to use nftables
+  ansible.builtin.copy:
+    dest: /etc/docker/daemon.json
+    content: |
+      {
+        "iptables": false
+      }
+    mode: '0644'
+    owner: root
+    group: root
+
+- name: Load iptable_nat kernel module
+  community.general.modprobe:
+    name: iptable_nat
+    state: present
+
+- name: Load iptable_filter kernel module
+  community.general.modprobe:
+    name: iptable_filter
+    state: present
+
+- name: Ensure iptable modules load on boot
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/docker.conf
+    content: |
+      iptable_nat
+      iptable_filter
+    mode: '0644'
+    owner: root
+    group: root
+
 - name: Enable and start Docker service
   ansible.builtin.systemd:
     name: docker
