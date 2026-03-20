@@ -101,8 +101,8 @@
 - name: Pull default models
   ansible.builtin.command:
     cmd: "ollama pull {{ item }}"
-  loop: "{{ ollama_default_models if ollama_default_models is iterable and ollama_default_models is not string else ollama_default_models.split(',') | map('trim') | select | list }}"
-  when: ollama_default_models | length > 0
+  loop: "{{ (ollama_default_models.split(',') | map('trim') | select | list) if ollama_default_models is string and ollama_default_models | trim | length > 0 else (ollama_default_models if ollama_default_models is iterable else []) }}"
+  when: ollama_default_models is defined and ollama_default_models | trim | length > 0 and ollama_default_models != '[]'
   register: model_pull
   changed_when: "'pulling' in model_pull.stdout | default('')"
   timeout: 1800
