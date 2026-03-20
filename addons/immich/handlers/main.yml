@@ -1,10 +1,10 @@
 ---
-# Immich Addon - Handlers
+# Immich Addon - Handlers (Podman)
 
 - name: restart immich
-  community.docker.docker_compose_v2:
-    project_src: "{{ immich_data_path }}"
-    state: restarted
+  ansible.builtin.command:
+    cmd: podman-compose -f {{ immich_docker_compose_path }} restart
+    chdir: "{{ immich_data_path }}"
 
 - name: reload caddy
   ansible.builtin.systemd:

@@ -7,7 +7,7 @@
     notifempty
     create 0644 root root
     postrotate
-        cd {{ immich_data_path }} && docker compose restart immich-server immich-machine-learning || true
+        cd {{ immich_data_path }} && podman-compose restart immich-server immich-machine-learning || true
     endscript
 }
 

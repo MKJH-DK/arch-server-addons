@@ -43,7 +43,7 @@ check_docker_services() {
     while IFS= read -r service; do
         ((total_services++))
         local status
-        status=$(docker compose -f "$IMMICH_DATA_PATH/docker-compose.yml" ps -q "$service" | xargs docker inspect --format='{{.State.Status}}' 2>/dev/null || echo "not_found")
+        status=$(podman-compose -f "$IMMICH_DATA_PATH/docker-compose.yml" ps -q "$service" | xargs podman inspect --format='{{.State.Status}}' 2>/dev/null || echo "not_found")
         
         if [[ "$status" == "running" ]]; then
             log_success "$service: running"
@@ -51,7 +51,7 @@ check_docker_services() {
         else
             log_error "$service: $status"
         fi
-    done < <(docker compose -f "$IMMICH_DATA_PATH/docker-compose.yml" config --services)
+    done < <(podman-compose -f "$IMMICH_DATA_PATH/docker-compose.yml" config --services)
     
     log "Docker services: $services_running/$total_services running"
     return $((total_services - services_running))
@@ -74,12 +74,12 @@ check_immich_api() {
 check_database() {
     log "Checking database connection..."
     
-    if docker compose -f "$IMMICH_DATA_PATH/docker-compose.yml" exec -T immich-database pg_isready -U {{ immich_db_user }} -d {{ immich_db_name }} &>/dev/null; then
+    if podman-compose -f "$IMMICH_DATA_PATH/docker-compose.yml" exec -T immich-database pg_isready -U {{ immich_db_user }} -d {{ immich_db_name }} &>/dev/null; then
         log_success "Database: connected"
         
         # Check if tables exist
         local table_count
-        table_count=$(docker compose -f "$IMMICH_DATA_PATH/docker-compose.yml" exec -T immich-database psql -U {{ immich_db_user }} -d {{ immich_db_name }} -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';" 2>/dev/null | tr -d ' ' || echo "0")
+        table_count=$(podman-compose -f "$IMMICH_DATA_PATH/docker-compose.yml" exec -T immich-database psql -U {{ immich_db_user }} -d {{ immich_db_name }} -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';" 2>/dev/null | tr -d ' ' || echo "0")
         
         if [[ $table_count -gt 0 ]]; then
             log_success "Database: $table_count tables found"
@@ -98,7 +98,7 @@ check_database() {
 check_redis() {
     log "Checking Redis connection..."
     
-    if docker compose -f "$IMMICH_DATA_PATH/docker-compose.yml" exec -T immich-redis redis-cli ping | grep -q "PONG"; then
+    if podman-compose -f "$IMMICH_DATA_PATH/docker-compose.yml" exec -T immich-redis redis-cli ping | grep -q "PONG"; then
         log_success "Redis: connected"
         return 0
     else
@@ -187,9 +187,9 @@ check_memory() {
     containers=(immich-server immich-machine-learning immich-database immich-redis)
     
     for container in "${containers[@]}"; do
-        if docker ps --format "table {{.Names}}" | grep -q "$container"; then
+        if podman ps --format "table {{.Names}}" | grep -q "$container"; then
             local mem_usage_container
-            mem_usage_container=$(docker stats --no-stream --format "table {{.MemPerc}}" "$container" | tail -1 | sed 's/%//' || echo "0")
+            mem_usage_container=$(podman stats --no-stream --format "table {{.MemPerc}}" "$container" | tail -1 | sed 's/%//' || echo "0")
             
             if [[ -n "$mem_usage_container" && "$mem_usage_container" != "0" ]]; then
                 log_success "$container: ${mem_usage_container}% memory"
@@ -227,11 +227,11 @@ show_summary() {
     echo "  Thumbs: {{ immich_thumb_path }}"
     echo "  Profile: {{ immich_profile_path }}"
     echo ""
-    echo "Docker management:"
-    echo "  Logs: cd $IMMICH_DATA_PATH && docker compose logs -f"
-    echo "  Restart: cd $IMMICH_DATA_PATH && docker compose restart"
-    echo "  Stop: cd $IMMICH_DATA_PATH && docker compose down"
-    echo "  Start: cd $IMMICH_DATA_PATH && docker compose up -d"
+    echo "Podman management:"
+    echo "  Logs: cd $IMMICH_DATA_PATH && podman-compose logs -f"
+    echo "  Restart: cd $IMMICH_DATA_PATH && podman-compose restart"
+    echo "  Stop: cd $IMMICH_DATA_PATH && podman-compose down"
+    echo "  Start: cd $IMMICH_DATA_PATH && podman-compose up -d"
     echo "=========================="
 }
 

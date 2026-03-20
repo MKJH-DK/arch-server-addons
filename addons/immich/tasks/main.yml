@@ -1,72 +1,33 @@
 ---
-# Immich Addon - Main Tasks
+# Immich Addon - Main Tasks (Podman)
+#
+# Uses Podman (rootful) with podman-compose instead of Docker.
+# Compatible with hardened kernels that lack bridge/iptables modules.
 
-- name: Check if Docker is installed
-  ansible.builtin.command:
-    cmd: docker --version
-  register: docker_check
-  changed_when: false
-  failed_when: false
+# ── 1. Install Podman and dependencies ──────────────────────────────────────
 
-- name: Install Docker and Docker Compose
+- name: Install Podman and podman-compose
   ansible.builtin.pacman:
     name:
-      - docker
-      - docker-compose
+      - podman
+      - cni-plugins
+      - aardvark-dns
+      - netavark
+      - slirp4netns
     state: present
-  when: docker_check.rc != 0
 
-- name: Create Docker config directory
-  ansible.builtin.file:
-    path: /etc/docker
-    state: directory
-    mode: '0755'
-    owner: root
-    group: root
+- name: Install podman-compose via pip
+  ansible.builtin.pip:
+    name: podman-compose
+    state: present
 
-- name: Configure Docker to use nftables
-  ansible.builtin.copy:
-    dest: /etc/docker/daemon.json
-    content: |
-      {
-        "iptables": false
-      }
-    mode: '0644'
-    owner: root
-    group: root
-
-- name: Load iptable kernel modules (best effort)
-  ansible.builtin.command:
-    cmd: modprobe {{ item }}
-  loop:
-    - iptable_nat
-    - iptable_filter
-  changed_when: false
-  failed_when: false
-
-- name: Ensure iptable modules load on boot (best effort)
-  ansible.builtin.copy:
-    dest: /etc/modules-load.d/docker.conf
-    content: |
-      iptable_nat
-      iptable_filter
-    mode: '0644'
-    owner: root
-    group: root
-
-- name: Enable and start Docker service
+- name: Enable and start Podman socket (for API compatibility)
   ansible.builtin.systemd:
-    name: docker
+    name: podman.socket
     state: started
     enabled: true
-    daemon_reload: true
 
-- name: Add admin user to docker group
-  ansible.builtin.user:
-    name: admin
-    groups: docker
-    append: true
-  when: docker_check.rc != 0
+# ── 2. Create directories ──────────────────────────────────────────────────
 
 - name: Create Immich directories
   ansible.builtin.file:
@@ -85,13 +46,9 @@
     - "{{ immich_profile_path }}"
     - "{{ immich_backup_path }}"
 
-- name: Create Docker network for Immich
-  community.docker.docker_network:
-    name: "{{ immich_network_name }}"
-    state: present
-  register: docker_network
+# ── 3. Generate credentials ────────────────────────────────────────────────
 
-- name: Generate random passwords if not provided
+- name: Generate random DB password if not provided
   ansible.builtin.set_fact:
     immich_db_password: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters,digits') }}"
   when: vault_immich_db_password is not defined
@@ -101,7 +58,9 @@
     immich_admin_password: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters,digits') }}"
   when: vault_immich_admin_password is not defined
 
-- name: Deploy Docker environment file
+# ── 4. Deploy configuration files ──────────────────────────────────────────
+
+- name: Deploy environment file
   ansible.builtin.template:
     src: docker.env.j2
     dest: "{{ immich_docker_env_path }}"
@@ -110,7 +69,7 @@
     group: root
   notify: restart immich
 
-- name: Deploy Docker Compose file
+- name: Deploy Compose file
   ansible.builtin.template:
     src: docker-compose.yml.j2
     dest: "{{ immich_docker_compose_path }}"
@@ -128,22 +87,28 @@
     group: root
   notify: reload caddy
 
-- name: Pull Docker images
-  community.docker.docker_image:
-    name: "{{ item }}"
-    source: pull
-  loop:
-    - "ghcr.io/immich-app/immich-server:{{ immich_version }}"
-    - "ghcr.io/immich-app/immich-machine-learning:{{ immich_version }}"
-    - "redis:7-alpine"
-    - "tensorchord/pgvecto-rs:pg14-v0.2.0"
-  when: immich_version != "latest"
+# ── 5. Create Podman network ───────────────────────────────────────────────
 
-- name: Start Immich services with Docker Compose
-  community.docker.docker_compose_v2:
-    project_src: "{{ immich_data_path }}"
-    state: present
+- name: Check if Podman network exists
+  ansible.builtin.command:
+    cmd: podman network exists {{ immich_network_name }}
+  register: podman_net_check
+  changed_when: false
+  failed_when: false
+
+- name: Create Podman network for Immich
+  ansible.builtin.command:
+    cmd: podman network create {{ immich_network_name }}
+  when: podman_net_check.rc != 0
+
+# ── 6. Start services ──────────────────────────────────────────────────────
+
+- name: Start Immich services with podman-compose
+  ansible.builtin.command:
+    cmd: podman-compose -f {{ immich_docker_compose_path }} up -d
+    chdir: "{{ immich_data_path }}"
   register: immich_compose
+  changed_when: "'Creating' in immich_compose.stdout or 'Starting' in immich_compose.stdout"
 
 - name: Wait for Immich server to be ready
   ansible.builtin.uri:
@@ -154,6 +119,9 @@
   retries: 10
   delay: 10
   until: immich_health.status == 200
+  failed_when: false
+
+# ── 7. Deploy helper scripts ───────────────────────────────────────────────
 
 - name: Create Immich admin user script
   ansible.builtin.template:
@@ -179,6 +147,8 @@
     owner: root
     group: root
 
+# ── 8. Backup timer ────────────────────────────────────────────────────────
+
 - name: Create systemd service for Immich backup
   ansible.builtin.template:
     src: immich-backup.service.j2
@@ -202,6 +172,8 @@
     enabled: true
   when: immich_backup_enabled | bool
 
+# ── 9. Health check & logrotate ─────────────────────────────────────────────
+
 - name: Create Immich health check script
   ansible.builtin.template:
     src: immich-health.sh.j2
@@ -218,12 +190,14 @@
     owner: root
     group: root
 
+# ── 10. Store credentials ──────────────────────────────────────────────────
+
 - name: Store generated passwords in secure file
   ansible.builtin.copy:
     content: |
       # Immich Generated Passwords
       # Generated on: {{ ansible_date_time.iso8601 }}
-      
+
       IMMICH_DB_PASSWORD={{ immich_db_password }}
       IMMICH_ADMIN_PASSWORD={{ immich_admin_password }}
     dest: "{{ immich_data_path }}/.credentials"
@@ -232,10 +206,12 @@
     group: root
   when: vault_immich_db_password is not defined or vault_immich_admin_password is not defined
 
+# ── 11. Summary ─────────────────────────────────────────────────────────────
+
 - name: Display Immich setup information
   ansible.builtin.debug:
     msg:
-      - "Immich addon deployed successfully"
+      - "Immich addon deployed successfully (Podman)"
       - "Data path: {{ immich_data_path }}"
       - "Web URL: http://localhost{{ immich_url_prefix }}/"
       - "{%- if immich_domain | length > 0 %}Domain URL: https://{{ immich_domain }}/{%- endif %}"
@@ -253,9 +229,9 @@
       - "  Restore: immich-restore"
       - "  Health check: immich-health"
       - ""
-      - "Docker management:"
-      - "  View logs: cd {{ immich_data_path }} && docker compose logs -f"
-      - "  Stop services: cd {{ immich_data_path }} && docker compose down"
-      - "  Start services: cd {{ immich_data_path }} && docker compose up -d"
+      - "Podman management:"
+      - "  View logs: cd {{ immich_data_path }} && podman-compose logs -f"
+      - "  Stop services: cd {{ immich_data_path }} && podman-compose down"
+      - "  Start services: cd {{ immich_data_path }} && podman-compose up -d"
       - ""
       - "Credentials stored in: {{ immich_data_path }}/.credentials"

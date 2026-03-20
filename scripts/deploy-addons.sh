@@ -98,9 +98,9 @@ if ! command -v ansible-playbook &> /dev/null; then
     exit 1
 fi
 
-# Install Python dependencies required by Ansible Docker modules
+# Install Python dependencies required by Ansible modules
 log_info "Ensuring Python dependencies are installed..."
-pacman -S --needed --noconfirm python-requests python-docker &>/dev/null || true
+pacman -S --needed --noconfirm python-requests &>/dev/null || true
 
 # Find base inventory — derive from this script's location
 # If addons repo is at /home/admin/arch-server-addons, base is likely /home/admin/arch-server
