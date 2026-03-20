@@ -9,30 +9,52 @@
       - wget
     state: present
 
-- name: Check if paru is available (for AUR packages)
+- name: Check if CrowdSec is already installed
   ansible.builtin.command:
-    cmd: which paru
-  register: paru_check
+    cmd: cscli version
+  register: cscli_check
   changed_when: false
   failed_when: false
 
-- name: Install CrowdSec from AUR via paru
-  ansible.builtin.command:
-    cmd: "paru -S --noconfirm --needed {{ item }}"
-  become_user: "{{ crowdsec_aur_user | default('admin') }}"
-  loop:
-    - crowdsec
-    - crowdsec-firewall-bouncer-nftables
-  when: paru_check.rc == 0
-  register: crowdsec_install
-  changed_when: "'installing' in crowdsec_install.stdout | default('')"
+- name: Check for AUR helper
+  ansible.builtin.shell: "command -v paru || command -v yay"
+  register: aur_helper
+  changed_when: false
+  failed_when: false
+  when: cscli_check.rc != 0
 
-- name: Install CrowdSec via official install script (paru not available)
-  ansible.builtin.shell: |
-    curl -s https://install.crowdsec.net | bash
-  args:
-    creates: /usr/bin/cscli
-  when: paru_check.rc != 0
+- name: Install CrowdSec via AUR helper
+  ansible.builtin.command:
+    cmd: "{{ aur_helper.stdout | trim }} -S --noconfirm --needed crowdsec crowdsec-firewall-bouncer-nftables"
+  become_user: "{{ crowdsec_aur_user | default('admin') }}"
+  when: cscli_check.rc != 0 and aur_helper.rc == 0
+
+- name: Install CrowdSec from binary release (no AUR helper)
+  when: cscli_check.rc != 0 and aur_helper.rc != 0
+  block:
+    - name: Get latest CrowdSec release version
+      ansible.builtin.uri:
+        url: https://api.github.com/repos/crowdsecurity/crowdsec/releases/latest
+        return_content: true
+      register: cs_release
+
+    - name: Download CrowdSec binary
+      ansible.builtin.get_url:
+        url: "https://github.com/crowdsecurity/crowdsec/releases/download/{{ cs_release.json.tag_name }}/crowdsec-release.tgz"
+        dest: /tmp/crowdsec-release.tgz
+        mode: "0644"
+
+    - name: Extract CrowdSec
+      ansible.builtin.unarchive:
+        src: /tmp/crowdsec-release.tgz
+        dest: /tmp/
+        remote_src: true
+
+    - name: Install CrowdSec from extracted release
+      ansible.builtin.shell: |
+        cd /tmp/crowdsec-{{ cs_release.json.tag_name | regex_replace('^v', '') }}* && ./wizard.sh --installdir /usr --datadir /var/lib/crowdsec/data --configdir /etc/crowdsec --bininstall
+      args:
+        creates: /usr/bin/cscli
 
 - name: Create CrowdSec directories
   ansible.builtin.file:
