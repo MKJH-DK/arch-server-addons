@@ -155,12 +155,24 @@
     state: started
     enabled: true
 
+- name: Check for firewall bouncer service
+  ansible.builtin.shell: "systemctl list-unit-files | grep -o 'crowdsec-firewall[^ ]*\\.service' | head -1"
+  register: cs_fw_service
+  changed_when: false
+  failed_when: false
+  when: crowdsec_firewall_enabled | bool
+
 - name: Enable and start CrowdSec firewall bouncer
   ansible.builtin.systemd:
-    name: crowdsec-firewall
+    name: "{{ cs_fw_service.stdout | trim | regex_replace('\\.service$', '') }}"
     state: started
     enabled: true
-  when: crowdsec_firewall_enabled | bool
+  when: crowdsec_firewall_enabled | bool and cs_fw_service.stdout | trim | length > 0
+
+- name: Warn if firewall bouncer not found
+  ansible.builtin.debug:
+    msg: "CrowdSec firewall bouncer service not found — install manually if needed"
+  when: crowdsec_firewall_enabled | bool and (cs_fw_service.stdout | default('') | trim | length == 0)
 
 - name: Wait for CrowdSec agent to be ready
   ansible.builtin.uri:
