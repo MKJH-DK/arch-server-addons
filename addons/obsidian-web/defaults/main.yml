@@ -61,7 +61,8 @@ obsidian_sites:
     description: "Personlig hjemmeside og CV"
     domain: "mkjh.dk"
 
-  - name: notes.mkjh.dk
-    title: "Notes"
-    description: "Offentlige noter og artikler"
-    domain: "notes.mkjh.dk"
+# Eksempel: tilføj flere sites ved at uncommente og tilpasse:
+#  - name: notes.mkjh.dk
+#    title: "Notes"
+#    description: "Offentlige noter og artikler"
+#    domain: "notes.mkjh.dk"
