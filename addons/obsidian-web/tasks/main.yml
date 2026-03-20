@@ -133,6 +133,11 @@
 
 # ── 4. Quartz installation ────────────────────────────────────────────────────
 
+- name: Check if Quartz is already cloned
+  ansible.builtin.stat:
+    path: "{{ obsidian_quartz_path }}/.git"
+  register: quartz_git
+
 - name: Clone Quartz v4 static site generator
   ansible.builtin.git:
     repo: https://github.com/jackyzha0/quartz.git
@@ -140,6 +145,7 @@
     version: v4
     update: false
   become_user: "{{ obsidian_syncthing_user }}"
+  when: not quartz_git.stat.exists
 
 - name: Install Quartz Node.js dependencies
   # ansible.builtin.command is used here because community.general.npm does not
