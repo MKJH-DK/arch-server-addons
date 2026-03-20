@@ -1,16 +1,38 @@
 ---
 # CrowdSec Addon - Main Tasks
 
-- name: Install required packages
+- name: Install standard packages
   ansible.builtin.pacman:
     name:
-      - crowdsec
-      - crowdsec-firewall-bouncer
       - jq
       - curl
       - wget
     state: present
-  when: ansible_distribution == "Archlinux"
+
+- name: Check if paru is available (for AUR packages)
+  ansible.builtin.command:
+    cmd: which paru
+  register: paru_check
+  changed_when: false
+  failed_when: false
+
+- name: Install CrowdSec from AUR via paru
+  ansible.builtin.command:
+    cmd: "paru -S --noconfirm --needed {{ item }}"
+  become_user: "{{ crowdsec_aur_user | default('admin') }}"
+  loop:
+    - crowdsec
+    - crowdsec-firewall-bouncer-nftables
+  when: paru_check.rc == 0
+  register: crowdsec_install
+  changed_when: "'installing' in crowdsec_install.stdout | default('')"
+
+- name: Install CrowdSec via official install script (paru not available)
+  ansible.builtin.shell: |
+    curl -s https://install.crowdsec.net | bash
+  args:
+    creates: /usr/bin/cscli
+  when: paru_check.rc != 0
 
 - name: Create CrowdSec directories
   ansible.builtin.file:
