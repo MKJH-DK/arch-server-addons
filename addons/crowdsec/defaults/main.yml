@@ -2,10 +2,9 @@
 # CrowdSec Addon Default Variables
 
 # Basic configuration
-crowdsec_enabled: "{{ crowdsec_enabled | default(false) }}"
-crowdsec_data_path: "{{ crowdsec_data_path | default('/srv/crowdsec') }}"
-crowdsec_config_path: "{{ crowdsec_config_path | default('/etc/crowdsec') }}"
-crowdsec_log_path: "{{ crowdsec_log_path | default('/var/log/crowdsec') }}"
+crowdsec_data_path: "/srv/crowdsec"
+crowdsec_config_path: "/etc/crowdsec"
+crowdsec_log_path: "/var/log/crowdsec"
 
 # CrowdSec Agent configuration
 crowdsec_agent_port: 8080
@@ -15,11 +14,14 @@ crowdsec_agent_log_level: "info"
 crowdsec_agent_log_file: "{{ crowdsec_log_path }}/agent.log"
 
 # CrowdSec Bouncer configuration
-crowdsec_bouncer_mode: "stream"  # stream, live
+crowdsec_bouncer_mode: "stream"
 crowdsec_bouncer_api_key: "{{ vault_crowdsec_api_key | default('') }}"
 crowdsec_bouncer_decision_timeout: "4s"
 crowdsec_bouncer_clean_ip_cache_duration: "5m"
 crowdsec_bouncer_clean_scenario_cache_duration: "5m"
+
+# AUR user (for installing from AUR — cannot be root)
+crowdsec_aur_user: "admin"
 
 # Caddy integration
 crowdsec_caddy_enabled: true
@@ -29,7 +31,7 @@ crowdsec_caddy_ban_threshold: 3
 
 # Firewall integration
 crowdsec_firewall_enabled: true
-crowdsec_firewall_type: "nftables"  # nftables, iptables
+crowdsec_firewall_type: "nftables"
 crowdsec_firewall_config_path: "/etc/crowdsec/configs/firewall.yaml"
 
 # Metrics and monitoring
@@ -49,7 +51,7 @@ crowdsec_scenarios_enabled: true
 crowdsec_custom_scenarios_path: "{{ crowdsec_config_path }}/scenarios"
 
 # Machine Learning
-crowdsec_ml_enabled: true
+crowdsec_ml_enabled: false
 crowdsec_ml_model_path: "{{ crowdsec_data_path }}/models"
 
 # Backup and retention
@@ -69,9 +71,9 @@ crowdsec_blocklist_only_mode: false
 crowdsec_stream_mode: true
 
 # Notification settings
-crowdsec_notifications_enabled: true
-crowdsec_notification_webhook: "{{ vault_crowdsec_webhook_url | default('') }}"
-crowdsec_notification_email: "{{ crowdsec_notification_email | default('') }}"
+crowdsec_notifications_enabled: false
+crowdsec_notification_webhook: ""
+crowdsec_notification_email: ""
 
 # Integration settings
 crowdsec_caddy_integration: true
