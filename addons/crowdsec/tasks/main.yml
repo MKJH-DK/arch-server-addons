@@ -86,32 +86,7 @@
     owner: root
     group: root
 
-- name: Deploy CrowdSec agent configuration
-  ansible.builtin.template:
-    src: crowdsec-agent.yaml.j2
-    dest: "{{ crowdsec_config_path }}/config/agent.yaml"
-    mode: '0644'
-    owner: root
-    group: root
-  notify: restart crowdsec
-
-- name: Deploy CrowdSec firewall configuration
-  ansible.builtin.template:
-    src: crowdsec-firewall.yaml.j2
-    dest: "{{ crowdsec_firewall_config_path }}"
-    mode: '0644'
-    owner: root
-    group: root
-  notify: restart crowdsec-firewall
-
-- name: Deploy CrowdSec scenarios configuration
-  ansible.builtin.template:
-    src: crowdsec-scenarios.yaml.j2
-    dest: "{{ crowdsec_config_path }}/scenarios/custom.yaml"
-    mode: '0644'
-    owner: root
-    group: root
-  notify: restart crowdsec
+# Use CrowdSec's own default config — only add collections via cscli
 
 - name: Deploy Caddy integration configuration
   ansible.builtin.template:
@@ -175,14 +150,14 @@
   when: crowdsec_firewall_enabled | bool and (cs_fw_service.stdout | default('') | trim | length == 0)
 
 - name: Wait for CrowdSec agent to be ready
-  ansible.builtin.uri:
-    url: "http://localhost:{{ crowdsec_agent_port }}/v1/metrics"
-    method: GET
-    timeout: 30
+  ansible.builtin.command:
+    cmd: cscli machines list
   register: crowdsec_health
-  retries: 10
+  retries: 5
   delay: 3
-  until: crowdsec_health.status == 200
+  until: crowdsec_health.rc == 0
+  changed_when: false
+  failed_when: false
 
 - name: Create CrowdSec management scripts
   ansible.builtin.template:
