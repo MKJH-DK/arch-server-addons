@@ -98,13 +98,16 @@ if ! command -v ansible-playbook &> /dev/null; then
     exit 1
 fi
 
-# Find base inventory (check common locations)
+# Find base inventory — derive from this script's location
+# If addons repo is at /home/admin/arch-server-addons, base is likely /home/admin/arch-server
+SCRIPT_PARENT="$(dirname "$PROJECT_DIR")"
 BASE_INVENTORY=""
 for candidate in \
+    "$SCRIPT_PARENT/arch-server/src/ansible/inventory/hosts.yml" \
     "$HOME/arch-server/src/ansible/inventory/hosts.yml" \
+    "/home/admin/arch-server/src/ansible/inventory/hosts.yml" \
     "/root/arch-server/src/ansible/inventory/hosts.yml" \
-    "/root/arch/src/ansible/inventory/hosts.yml" \
-    "$HOME/arch/src/ansible/inventory/hosts.yml"; do
+    "/root/arch/src/ansible/inventory/hosts.yml"; do
     if [[ -f "$candidate" ]]; then
         BASE_INVENTORY="$candidate"
         break
@@ -113,8 +116,8 @@ done
 
 if [[ -z "$BASE_INVENTORY" ]]; then
     log_error "Base Ansible inventory not found"
-    log_info "Searched: ~/arch-server/, /root/arch-server/, /root/arch/"
-    log_info "Ensure base server is deployed first"
+    log_info "Searched relative to: $SCRIPT_PARENT"
+    log_info "Ensure arch-server is cloned next to arch-server-addons"
     exit 1
 fi
 log_info "Using base inventory: $BASE_INVENTORY"
