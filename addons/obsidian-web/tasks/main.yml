@@ -138,6 +138,12 @@
     path: "{{ obsidian_quartz_path }}/.git"
   register: quartz_git
 
+- name: Remove non-git Quartz directory if present
+  ansible.builtin.file:
+    path: "{{ obsidian_quartz_path }}"
+    state: absent
+  when: not quartz_git.stat.exists
+
 - name: Clone Quartz v4 static site generator
   ansible.builtin.git:
     repo: https://github.com/jackyzha0/quartz.git
