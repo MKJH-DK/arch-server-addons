@@ -8,7 +8,7 @@
 {% set local_sites  = obsidian_sites | selectattr('domain', 'equalto', '') | list %}
 
 {% for site in domain_sites %}
-{{ site.domain }} {
+http://{{ site.domain }} {
     root * {{ obsidian_web_root }}/{{ site.name }}
 
     encode gzip zstd
