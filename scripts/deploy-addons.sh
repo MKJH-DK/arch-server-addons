@@ -254,7 +254,7 @@ if [[ $? -eq 0 ]]; then
     fi
 
     # AI CLI Tools
-    local ai_tools_shown=false
+    ai_tools_shown=false
     for tool_var in CLAUDE_CLI_ENABLED GEMINI_CLI_ENABLED SHELLGPT_ENABLED CODEX_ENABLED; do
         if [[ "${!tool_var:-false}" == "true" ]]; then
             if [[ "$ai_tools_shown" == "false" ]]; then
