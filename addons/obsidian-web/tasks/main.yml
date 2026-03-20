@@ -227,7 +227,7 @@
   register: syncthing_status
   retries: 10
   delay: 2
-  until: syncthing_status.status == 200
+  until: syncthing_status.status in [200, 403]
   failed_when: false
 
 # ── 9. Caddy configuration ────────────────────────────────────────────────────
@@ -245,7 +245,13 @@
   ansible.builtin.command:
     cmd: /usr/local/bin/build-quartz-sites
   changed_when: true
-  # changed_when: true because the build always produces fresh output
+  failed_when: false
+  register: quartz_build
+  # Initial build may fail if vault content is minimal — timer will retry
+
+- name: Show Quartz build result
+  ansible.builtin.debug:
+    msg: "Quartz build {{ 'succeeded' if quartz_build.rc == 0 else 'failed (will retry via timer): ' + quartz_build.stdout | default('') }}"
 
 # ── 11. Setup summary ─────────────────────────────────────────────────────────
 
