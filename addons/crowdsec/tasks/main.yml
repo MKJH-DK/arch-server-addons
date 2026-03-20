@@ -235,13 +235,6 @@
     group: root
   when: vault_crowdsec_enroll_key is not defined
 
-- name: Configure CrowdSec metrics collection
-  ansible.builtin.lineinfile:
-    path: "{{ crowdsec_config_path }}/config/agent.yaml"
-    regexp: '^metrics:'
-    line: 'metrics: {{ crowdsec_metrics_enabled | lower }}'
-  when: crowdsec_metrics_enabled | bool
-
 - name: Create CrowdSec health check endpoint
   ansible.builtin.copy:
     content: |
