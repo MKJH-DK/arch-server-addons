@@ -31,3 +31,13 @@ ehthumbs.db
 *.bak
 *~
 .~lock.*
+
+// ── Build artifacts og dependencies ─────────────────────────────────────────
+node_modules
+.quartz-cache
+__pycache__
+*.pyc
+
+// ── Git (repos i vaulten håndteres separat) ─────────────────────────────────
+// Ignorer .git i submapper (04-repos/) for at undgå store syncs
+04-repos/**/.git

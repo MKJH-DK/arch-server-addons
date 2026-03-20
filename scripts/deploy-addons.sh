@@ -132,11 +132,11 @@ cd "$PROJECT_DIR/ansible"
 ansible-playbook -i "$BASE_INVENTORY" \
     playbooks/addons.yml \
     -e "obsidian_enabled=${OBSIDIAN_ENABLED:-false}" \
-    -e "obsidian_vault_path=${OBSIDIAN_VAULT_PATH:-/srv/obsidian/vault}" \
+    -e "obsidian_vault_path=${OBSIDIAN_VAULT_PATH:-/srv/vault}" \
     -e "obsidian_domain=${OBSIDIAN_DOMAIN:-}" \
     -e "obsidian_url_prefix=${OBSIDIAN_URL_PREFIX:-/wiki}" \
-    -e "obsidian_syncthing_user=${OBSIDIAN_SYNCTHING_USER:-root}" \
-    -e "obsidian_render_mode=${OBSIDIAN_RENDER_MODE:-client}" \
+    -e "obsidian_syncthing_user=${OBSIDIAN_SYNCTHING_USER:-admin}" \
+    -e "obsidian_render_mode=${OBSIDIAN_RENDER_MODE:-quartz}" \
     -e "backblaze_enabled=${BACKBLAZE_ENABLED:-false}" \
     -e "backup_b2_bucket=${BACKUP_B2_BUCKET:-}" \
     -e "backup_schedule=${BACKUP_SCHEDULE:-daily}" \

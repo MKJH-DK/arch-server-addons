@@ -1,60 +1,66 @@
 ---
 # Obsidian Web Addon - Default Variables
+#
+# Vault-strukturen bevares som den er fra Obsidian.
+# Eneste tilføjelse er _public/ mappen hvorfra Quartz bygger websites.
 
 # --- Paths ---
 
-# Where Syncthing syncs the vault to on the server
-obsidian_vault_path: /srv/obsidian/vault
+# Vault root — hele vaulten synces hertil via Syncthing.
+# Mappestruktur bevares: 01-notes/, 02-knowledge/, 03-personal/, 04-repos/
+# _public/ tilføjes som eneste nye mappe (til Quartz websites).
+obsidian_vault_path: /srv/vault
 
-# Quartz static site generator installation directory
-obsidian_quartz_path: /srv/obsidian/quartz
+# Quartz static site generator installation
+obsidian_quartz_path: /srv/quartz
 
-# Per-site Quartz config files (one .ts per site)
-obsidian_quartz_configs_path: /srv/obsidian/quartz-configs
+# Per-site Quartz config files (én .ts per site)
+obsidian_quartz_configs_path: /srv/quartz/configs
 
-# Web root where built sites are served from
-# Each site gets its own subdirectory: web_root/<site-name>/
+# Web root — byggede sites serves herfra
+# Hver site får sin egen mappe: web_root/<site-name>/
 obsidian_web_root: /var/www/sites
 
 # --- Syncthing ---
 
-# User that owns vault files and runs Syncthing
-# A dedicated service user (e.g. 'obsidian') is better for security,
-# but 'root' works on a single-user server
-obsidian_syncthing_user: root
+# Bruger der ejer vault-filer og kører Syncthing
+obsidian_syncthing_user: admin
 
-# Syncthing admin interface port (localhost only)
+# Syncthing admin port (kun localhost)
 obsidian_syncthing_port: 8384
 
-# Syncthing data directory (device keys, index, config)
+# Syncthing data (device keys, index, config)
 obsidian_syncthing_data_path: /var/lib/syncthing
 
 # --- Caddy ---
 
-# Path for the generated Caddy site configuration
 obsidian_caddy_config_path: /etc/caddy/conf.d/obsidian.caddy
 
 # --- Build ---
 
-# How often to rebuild sites (minutes)
-# Quartz reads vault/_public/<site>/ and outputs to web_root/<site>/
+# Hvor ofte Quartz rebuilder sites (minutter)
+# Læser fra vault/_public/<site>/ → web_root/<site>/
 obsidian_build_interval_minutes: 5
 
 # --- Sites ---
 #
-# Define one entry per section of _public/ you want to publish as a website.
-# Each site builds from:  vault/_public/<name>/  →  web_root/<name>/
+# Hvert entry under _public/ der skal publiceres som website.
+# Bygger fra:  vault/_public/<name>/  →  web_root/<name>/
 #
-# Fields:
-#   name        - directory name under _public/ (must be a valid path segment)
-#   title       - site title shown in Quartz UI
-#   description - short description (used in meta tags and RSS)
-#   domain      - fully qualified domain name (e.g. "notes.example.com")
-#                 Leave empty for local/development access on port 8080
+# Felter:
+#   name        - mappenavn under _public/ (valid path segment)
+#   title       - sidetitel i Quartz
+#   description - meta description (SEO, RSS)
+#   domain      - FQDN (f.eks. "example.com") — tom = path-baseret
 #
-# Override this in your Ansible inventory for your actual setup.
+# Override i Ansible inventory for dit faktiske setup.
 obsidian_sites:
-  - name: notes-public
+  - name: site
+    title: "Hjemmeside"
+    description: "Personlig hjemmeside og CV"
+    domain: ""
+
+  - name: notes
     title: "Notes"
-    description: "Public notes"
+    description: "Offentlige noter og artikler"
     domain: ""

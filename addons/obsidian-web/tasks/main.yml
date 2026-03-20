@@ -75,7 +75,9 @@
 
 # ── 3. Vault initialisation (safe — never overwrites existing files) ──────────
 
-- name: Create vault README (first run only)
+# Vault README — oprettes kun hvis vaulten er tom (første deploy).
+# Eksisterende vault-struktur røres IKKE.
+- name: Create vault README (first run only, empty vault)
   ansible.builtin.copy:
     dest: "{{ obsidian_vault_path }}/README.md"
     mode: "0644"
@@ -83,24 +85,21 @@
     group: "{{ obsidian_syncthing_user }}"
     force: false
     content: |
-      # Obsidian Vault
+      # Vault
 
-      This vault is synced between devices via Syncthing.
+      Synced mellem enheder via Syncthing.
 
-      ## Structure
+      ## Struktur
 
-      | Folder | Purpose |
-      |--------|---------|
-      | `_public/` | Published as websites (Quartz builds from here) |
-      | `_private/` | Private notes — never served |
-      | `_repos/` | Git repositories |
-      | `_shared/` | Assets and templates shared across notes |
-      | `00-inbox/` | Unprocessed notes |
-      | `01-projects/` | Active projects |
-      | `03-resources/` | Reference material |
-      | `04-archive/` | Archived notes |
+      | Mappe | Formål |
+      |-------|--------|
+      | `01-notes/` | Noter |
+      | `02-knowledge/` | Videnbase |
+      | `03-personal/` | Personligt |
+      | `04-repos/` | Git repositories |
+      | `_public/` | Websites (Quartz bygger herfra) |
 
-      **Private by default.** Only content in `_public/` is ever published.
+      **Privat som default.** Kun indhold i `_public/` publiceres.
 
 - name: Create placeholder index per site (first run only)
   ansible.builtin.copy:
