@@ -101,7 +101,7 @@
 - name: Pull default models
   ansible.builtin.command:
     cmd: "ollama pull {{ item }}"
-  loop: "{{ ollama_default_models }}"
+  loop: "{{ ollama_default_models if ollama_default_models is iterable and ollama_default_models is not string else ollama_default_models.split(',') | map('trim') | select | list }}"
   when: ollama_default_models | length > 0
   register: model_pull
   changed_when: "'pulling' in model_pull.stdout | default('')"
