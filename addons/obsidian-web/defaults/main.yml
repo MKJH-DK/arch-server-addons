@@ -7,8 +7,8 @@
 # --- Paths ---
 
 # Vault root — hele vaulten synces hertil via Syncthing.
-# Mappestruktur bevares: 01-notes/, 02-knowledge/, 03-personal/, 04-repos/
-# _public/ tilføjes som eneste nye mappe (til Quartz websites).
+# Struktur: 01-notes/, 02-knowledge/, 03-personal/, 04-repos/, 05-public/
+# 05-public/ indeholder Quartz sites — hver mappe hedder det samme som URL'en.
 obsidian_vault_path: /srv/vault
 
 # Quartz static site generator installation
@@ -44,23 +44,24 @@ obsidian_build_interval_minutes: 5
 
 # --- Sites ---
 #
-# Hvert entry under _public/ der skal publiceres som website.
-# Bygger fra:  vault/_public/<name>/  →  web_root/<name>/
+# Hvert entry under 05-public/ der skal publiceres som website.
+# Bygger fra:  vault/05-public/<name>/  →  web_root/<name>/
+# Mappenavnet (name) SKAL matche domænet så URL og filsti er identiske.
 #
 # Felter:
-#   name        - mappenavn under _public/ (valid path segment)
+#   name        - mappenavn under 05-public/ (= domænet)
 #   title       - sidetitel i Quartz
 #   description - meta description (SEO, RSS)
-#   domain      - FQDN (f.eks. "example.com") — tom = path-baseret
+#   domain      - FQDN (identisk med name)
 #
 # Override i Ansible inventory for dit faktiske setup.
 obsidian_sites:
-  - name: site
-    title: "Hjemmeside"
+  - name: mkjh.dk
+    title: "MKJH"
     description: "Personlig hjemmeside og CV"
     domain: "mkjh.dk"
 
-  - name: notes
+  - name: notes.mkjh.dk
     title: "Notes"
     description: "Offentlige noter og artikler"
     domain: "notes.mkjh.dk"

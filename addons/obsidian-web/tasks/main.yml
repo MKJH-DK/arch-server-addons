@@ -2,7 +2,7 @@
 # Obsidian Web Addon - Main Tasks
 #
 # Pipeline:
-#   Obsidian (device)  →  Syncthing  →  vault/_public/<site>/
+#   Obsidian (device)  →  Syncthing  →  vault/05-public/<site>/
 #   →  Quartz build  →  /var/www/sites/<site>/  →  Caddy
 
 # ── 1. Packages ──────────────────────────────────────────────────────────────
@@ -62,9 +62,9 @@
   loop_control:
     label: "{{ item.name }}"
 
-- name: Create vault _public directories (source for each site)
+- name: Create vault 05-public directories (source for each site)
   ansible.builtin.file:
-    path: "{{ obsidian_vault_path }}/_public/{{ item.name }}"
+    path: "{{ obsidian_vault_path }}/05-public/{{ item.name }}"
     state: directory
     mode: "0755"
     owner: "{{ obsidian_syncthing_user }}"
@@ -97,13 +97,13 @@
       | `02-knowledge/` | Videnbase |
       | `03-personal/` | Personligt |
       | `04-repos/` | Git repositories |
-      | `_public/` | Websites (Quartz bygger herfra) |
+      | `05-public/` | Websites (Quartz bygger herfra) |
 
-      **Privat som default.** Kun indhold i `_public/` publiceres.
+      **Privat som default.** Kun indhold i `05-public/` publiceres.
 
 - name: Create placeholder index per site (first run only)
   ansible.builtin.copy:
-    dest: "{{ obsidian_vault_path }}/_public/{{ item.name }}/index.md"
+    dest: "{{ obsidian_vault_path }}/05-public/{{ item.name }}/index.md"
     mode: "0644"
     owner: "{{ obsidian_syncthing_user }}"
     group: "{{ obsidian_syncthing_user }}"
@@ -117,7 +117,7 @@
 
       {{ item.description }}
 
-      Add your Markdown notes to `_public/{{ item.name }}/` and they will
+      Add your Markdown notes to `05-public/{{ item.name }}/` and they will
       appear here after the next Quartz build.
   loop: "{{ obsidian_sites }}"
   loop_control:
@@ -260,7 +260,7 @@
     msg: >-
       Obsidian Web addon deployed.
       Vault: {{ obsidian_vault_path }}
-      Public content source: {{ obsidian_vault_path }}/_public/
+      Public content source: {{ obsidian_vault_path }}/05-public/
       Syncthing admin: http://localhost:{{ obsidian_syncthing_port }}
       Sites: {% for site in obsidian_sites %}{{ site.name }}
       ({% if site.domain %}https://{{ site.domain }}{% else %}http://localhost:8080/{{ site.name }}/{% endif %})
@@ -268,4 +268,4 @@
       Next steps -
       1. Open Syncthing at http://localhost:{{ obsidian_syncthing_port }} and pair your devices.
       2. Configure vault folder sync to {{ obsidian_vault_path }}.
-      3. Add notes to _public/<site>/ on any device; they publish on the next build cycle.
+      3. Add notes to 05-public/<site>/ on any device; they publish on the next build cycle.
