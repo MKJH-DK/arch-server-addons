@@ -58,9 +58,9 @@ obsidian_sites:
   - name: site
     title: "Hjemmeside"
     description: "Personlig hjemmeside og CV"
-    domain: ""
+    domain: "mkjh.dk"
 
   - name: notes
     title: "Notes"
     description: "Offentlige noter og artikler"
-    domain: ""
+    domain: "notes.mkjh.dk"
