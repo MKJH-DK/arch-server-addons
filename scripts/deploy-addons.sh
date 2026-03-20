@@ -129,27 +129,16 @@ echo "    ShellGPT: ${SHELLGPT_ENABLED:-false}"
 echo "    Codex: ${CODEX_ENABLED:-false}"
 echo ""
 
-# Ansible requires UTF-8 locale. Find any available UTF-8 locale.
-UTF8_LOCALE=""
-for loc in en_US.UTF-8 C.UTF-8 da_DK.UTF-8; do
-    if locale -a 2>/dev/null | grep -qi "^${loc//./.}$\|^${loc}$"; then
-        UTF8_LOCALE="$loc"
-        break
-    fi
-done
-
+# Ansible requires UTF-8 locale.
+# Pick first available UTF-8 locale from the system.
+UTF8_LOCALE="$(locale -a 2>/dev/null | grep -i utf | head -1)"
 if [[ -z "$UTF8_LOCALE" ]]; then
-    # Pick first available UTF-8 locale
-    UTF8_LOCALE="$(locale -a 2>/dev/null | grep -i 'utf-\?8' | head -1)"
-fi
-
-if [[ -n "$UTF8_LOCALE" ]]; then
-    export LC_ALL="$UTF8_LOCALE"
-    export LANG="$UTF8_LOCALE"
-else
     log_error "No UTF-8 locale available. Run: sudo locale-gen"
     exit 1
 fi
+export LC_ALL="$UTF8_LOCALE"
+export LANG="$UTF8_LOCALE"
+log_info "Using locale: $UTF8_LOCALE"
 
 # Run addon playbook
 log_info "Deploying addons..."
