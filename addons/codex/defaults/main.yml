@@ -1,0 +1,22 @@
+---
+# OpenAI Codex CLI - AI coding agent
+# https://github.com/openai/codex
+
+# Package
+codex_cli_npm_package: "@openai/codex"
+codex_cli_version: "latest"
+
+# Runtime
+codex_cli_requires_nodejs: true
+codex_cli_min_node_version: "18"
+
+# API key - NEVER hardcode
+# Users should set OPENAI_API_KEY in their shell profile
+codex_cli_env_var: "OPENAI_API_KEY"
+
+# Shell integration
+codex_cli_shell_alias: "codex"
+codex_cli_add_to_path: true
+
+# Data directory
+codex_cli_config_dir: "/root/.codex"

@@ -1,0 +1,24 @@
+---
+# Gemini CLI - Google's AI coding assistant
+# https://github.com/google-gemini/gemini-cli
+
+# Package - install via npx (official Google method)
+# https://github.com/google-gemini/gemini-cli
+gemini_cli_npm_package: "@google/gemini-cli"
+gemini_cli_install_method: "npx"  # npx or npm
+gemini_cli_version: "latest"
+
+# Runtime
+gemini_cli_requires_nodejs: true
+gemini_cli_min_node_version: "18"
+
+# API key - NEVER hardcode
+# Users should set GEMINI_API_KEY in their shell profile
+gemini_cli_env_var: "GEMINI_API_KEY"
+
+# Shell integration
+gemini_cli_shell_alias: "gemini"
+gemini_cli_add_to_path: true
+
+# Data directory
+gemini_cli_config_dir: "/root/.gemini"

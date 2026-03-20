@@ -1,0 +1,74 @@
+---
+# ShellGPT (sgpt) - AI assistant for the command line
+# https://github.com/TheR1D/shell_gpt
+
+- name: Ensure Python is installed
+  community.general.pacman:
+    name:
+      - python
+      - python-pip
+      - python-pipx
+    state: present
+
+- name: Check Python version
+  ansible.builtin.command:
+    cmd: python3 --version
+  register: python_version
+  changed_when: false
+
+- name: Verify minimum Python version
+  ansible.builtin.assert:
+    that:
+      - python_version.stdout | regex_search('\\d+\\.\\d+') is version(shellgpt_min_python_version, '>=')
+    fail_msg: "Python {{ shellgpt_min_python_version }}+ required, found {{ python_version.stdout }}"
+
+- name: Install ShellGPT via pipx
+  ansible.builtin.command:
+    cmd: >-
+      pipx install {{ shellgpt_pip_package }}
+      {{ '' if shellgpt_version == 'latest' else '==' + shellgpt_version }}
+  register: sgpt_install
+  changed_when: "'installed package' in sgpt_install.stdout"
+  failed_when:
+    - sgpt_install.rc != 0
+    - "'already installed' not in sgpt_install.stderr"
+
+- name: Ensure pipx bin directory is in PATH
+  ansible.builtin.command:
+    cmd: pipx ensurepath
+  changed_when: false
+  failed_when: false
+
+- name: Verify sgpt is available
+  ansible.builtin.command:
+    cmd: sgpt --version
+  register: sgpt_version
+  changed_when: false
+  failed_when: false
+  environment:
+    PATH: "{{ ansible_env.PATH }}:/root/.local/bin"
+
+- name: Create ShellGPT config directory
+  ansible.builtin.file:
+    path: "{{ shellgpt_config_dir }}"
+    state: directory
+    mode: '0700'
+
+- name: Check if API key is configured
+  ansible.builtin.shell:
+    cmd: "printenv {{ shellgpt_env_var }} 2>/dev/null || true"
+  register: api_key_check
+  changed_when: false
+
+- name: Display setup information
+  ansible.builtin.debug:
+    msg:
+      - "ShellGPT installed successfully"
+      - "  Version: {{ sgpt_version.stdout | default('unknown') }}"
+      - "  Command: sgpt"
+      - "  Config: {{ shellgpt_config_dir }}"
+      - ""
+      - "{{ 'API key: CONFIGURED' if api_key_check.stdout | length > 0 else 'NEXT STEP: Set your API key:' }}"
+      - "{{ '' if api_key_check.stdout | length > 0 else '  export OPENAI_API_KEY=\"your-key-here\"' }}"
+      - "{{ '' if api_key_check.stdout | length > 0 else '  # Supports OpenAI, Azure, or local LLMs via litellm' }}"
+      - "{{ '' if api_key_check.stdout | length > 0 else '  # Add to ~/.bashrc or ~/.zshrc for persistence' }}"

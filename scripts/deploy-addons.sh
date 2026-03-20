@@ -107,6 +107,13 @@ echo "  Backblaze Backup: ${BACKBLAZE_ENABLED:-false}"
 echo "  cgit: ${CGIT_ENABLED:-false}"
 echo "  Immich: ${IMMICH_ENABLED:-false}"
 echo "  CrowdSec: ${CROWDSEC_ENABLED:-false}"
+echo "  Ollama: ${OLLAMA_ENABLED:-false}"
+echo ""
+echo "  AI CLI Tools:"
+echo "    Claude Code: ${CLAUDE_CLI_ENABLED:-false}"
+echo "    Gemini CLI: ${GEMINI_CLI_ENABLED:-false}"
+echo "    ShellGPT: ${SHELLGPT_ENABLED:-false}"
+echo "    Codex: ${CODEX_ENABLED:-false}"
 echo ""
 
 # Set a guaranteed locale before invoking Ansible.
@@ -155,7 +162,20 @@ ansible-playbook -i "$BASE_INVENTORY" \
     -e "crowdsec_agent_port=${CROWDSEC_AGENT_PORT:-8080}" \
     -e "crowdsec_api_port=${CROWDSEC_API_PORT:-8081}" \
     -e "crowdsec_firewall_enabled=${CROWDSEC_FIREWALL_ENABLED:-true}" \
-    -e "crowdsec_caddy_enabled=${CROWDSEC_CADDY_ENABLED:-true}"
+    -e "crowdsec_caddy_enabled=${CROWDSEC_CADDY_ENABLED:-true}" \
+    -e "ollama_enabled=${OLLAMA_ENABLED:-false}" \
+    -e "ollama_bind_address=${OLLAMA_BIND_ADDRESS:-127.0.0.1}" \
+    -e "ollama_port=${OLLAMA_PORT:-11434}" \
+    -e "ollama_data_path=${OLLAMA_DATA_PATH:-/srv/ollama}" \
+    -e "ollama_memory_max=${OLLAMA_MEMORY_MAX:-8G}" \
+    -e "ollama_default_models=${OLLAMA_DEFAULT_MODELS:-[]}" \
+    -e "ollama_caddy_enabled=${OLLAMA_CADDY_ENABLED:-false}" \
+    -e "ollama_domain=${OLLAMA_DOMAIN:-}" \
+    -e "ollama_url_prefix=${OLLAMA_URL_PREFIX:-/ollama}" \
+    -e "claude_cli_enabled=${CLAUDE_CLI_ENABLED:-false}" \
+    -e "gemini_cli_enabled=${GEMINI_CLI_ENABLED:-false}" \
+    -e "shellgpt_enabled=${SHELLGPT_ENABLED:-false}" \
+    -e "codex_enabled=${CODEX_ENABLED:-false}"
 
 if [[ $? -eq 0 ]]; then
     log_success "Addon deployment completed successfully"
@@ -198,7 +218,34 @@ if [[ $? -eq 0 ]]; then
         echo "    - Agent port: ${CROWDSEC_AGENT_PORT:-8080}"
         echo "    - API port: ${CROWDSEC_API_PORT:-8081}"
     fi
-    
+
+    if [[ "${OLLAMA_ENABLED:-false}" == "true" ]]; then
+        echo "  Ollama:"
+        echo "    - API: http://${OLLAMA_BIND_ADDRESS:-127.0.0.1}:${OLLAMA_PORT:-11434}"
+        echo "    - Data: ${OLLAMA_DATA_PATH:-/srv/ollama}"
+        echo "    - Pull model: ollama pull llama3.1:8b"
+        echo "    - Chat: ollama run llama3.1:8b"
+        echo "    - Status: ollama-manage status"
+    fi
+
+    # AI CLI Tools
+    local ai_tools_shown=false
+    for tool_var in CLAUDE_CLI_ENABLED GEMINI_CLI_ENABLED SHELLGPT_ENABLED CODEX_ENABLED; do
+        if [[ "${!tool_var:-false}" == "true" ]]; then
+            if [[ "$ai_tools_shown" == "false" ]]; then
+                echo ""
+                echo "  AI CLI Tools:"
+                ai_tools_shown=true
+            fi
+            case "$tool_var" in
+                CLAUDE_CLI_ENABLED) echo "    - Claude Code: claude --help (kræver ANTHROPIC_API_KEY)" ;;
+                GEMINI_CLI_ENABLED) echo "    - Gemini CLI: gemini --help (kræver GEMINI_API_KEY)" ;;
+                SHELLGPT_ENABLED) echo "    - ShellGPT: sgpt --help (kræver OPENAI_API_KEY)" ;;
+                CODEX_ENABLED) echo "    - Codex: codex --help (kræver OPENAI_API_KEY)" ;;
+            esac
+        fi
+    done
+
     echo ""
     log_success "All done! Run '/usr/local/bin/health-check' to verify system status"
 else

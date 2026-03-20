@@ -1,0 +1,22 @@
+---
+# Claude Code CLI - defaults
+# https://docs.anthropic.com/en/docs/claude-code
+
+# Package
+claude_cli_npm_package: "@anthropic-ai/claude-code"
+claude_cli_version: "latest"
+
+# Runtime
+claude_cli_requires_nodejs: true
+claude_cli_min_node_version: "18"
+
+# API key - NEVER hardcode, set via environment or interactive prompt
+# Users should set ANTHROPIC_API_KEY in their shell profile
+claude_cli_env_var: "ANTHROPIC_API_KEY"
+
+# Shell integration
+claude_cli_shell_alias: "claude"
+claude_cli_add_to_path: true
+
+# Data directory
+claude_cli_config_dir: "/root/.claude"

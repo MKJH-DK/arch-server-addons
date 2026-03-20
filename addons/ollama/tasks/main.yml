@@ -1,0 +1,180 @@
+---
+# Ollama - Run LLMs locally on your server
+# https://ollama.com
+
+# ── Installation ──────────────────────────────────────────
+
+- name: Check if Ollama is already installed
+  ansible.builtin.command:
+    cmd: ollama --version
+  register: ollama_existing
+  changed_when: false
+  failed_when: false
+
+- name: Install Ollama via official install script
+  ansible.builtin.shell:
+    cmd: curl -fsSL https://ollama.com/install.sh | sh
+  when: ollama_existing.rc != 0
+  register: ollama_install
+
+- name: Verify Ollama installation
+  ansible.builtin.command:
+    cmd: ollama --version
+  register: ollama_version
+  changed_when: false
+
+# ── User and directories ─────────────────────────────────
+
+- name: Create Ollama system user
+  ansible.builtin.user:
+    name: "{{ ollama_user }}"
+    group: "{{ ollama_group }}"
+    system: yes
+    create_home: no
+    shell: /usr/sbin/nologin
+  register: ollama_user_created
+  failed_when: false
+
+- name: Create Ollama group
+  ansible.builtin.group:
+    name: "{{ ollama_group }}"
+    system: yes
+  failed_when: false
+
+- name: Create Ollama directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ ollama_user }}"
+    group: "{{ ollama_group }}"
+    mode: '0755'
+  loop:
+    - "{{ ollama_data_path }}"
+    - "{{ ollama_models_path }}"
+
+# ── GPU detection ─────────────────────────────────────────
+
+- name: Check for NVIDIA GPU
+  ansible.builtin.command:
+    cmd: lspci
+  register: lspci_output
+  changed_when: false
+  failed_when: false
+
+- name: Set GPU availability fact
+  ansible.builtin.set_fact:
+    ollama_has_gpu: "{{ ollama_gpu_enabled and ('NVIDIA' in lspci_output.stdout or 'AMD' in lspci_output.stdout) }}"
+
+- name: Display GPU status
+  ansible.builtin.debug:
+    msg: "GPU detected: {{ 'Yes (' + ('NVIDIA' if 'NVIDIA' in lspci_output.stdout else 'AMD') + ')' if ollama_has_gpu else 'No (CPU-only mode)' }}"
+
+# ── Systemd service ──────────────────────────────────────
+
+- name: Deploy Ollama systemd service
+  ansible.builtin.template:
+    src: ollama.service.j2
+    dest: /etc/systemd/system/ollama.service
+    mode: '0644'
+  notify: Restart ollama
+
+- name: Enable and start Ollama service
+  ansible.builtin.systemd:
+    name: ollama
+    enabled: yes
+    state: started
+    daemon_reload: yes
+
+- name: Wait for Ollama API to be ready
+  ansible.builtin.uri:
+    url: "http://{{ ollama_bind_address }}:{{ ollama_port }}/api/tags"
+    method: GET
+    timeout: 5
+  register: ollama_health
+  retries: 10
+  delay: 3
+  until: ollama_health.status == 200
+  failed_when: false
+
+# ── Pull default models ──────────────────────────────────
+
+- name: Pull default models
+  ansible.builtin.command:
+    cmd: "ollama pull {{ item }}"
+  loop: "{{ ollama_default_models }}"
+  when: ollama_default_models | length > 0
+  register: model_pull
+  changed_when: "'pulling' in model_pull.stdout | default('')"
+  timeout: 1800
+
+# ── Caddy reverse proxy (optional) ───────────────────────
+
+- name: Deploy Ollama Caddy config
+  ansible.builtin.template:
+    src: ollama.caddy.j2
+    dest: "{{ ollama_caddy_config }}"
+    mode: '0644'
+  when: ollama_caddy_enabled | bool
+  notify: Reload caddy
+
+# ── Helper scripts ────────────────────────────────────────
+
+- name: Create Ollama management script
+  ansible.builtin.copy:
+    dest: /usr/local/bin/ollama-manage
+    mode: '0755'
+    content: |
+      #!/bin/bash
+      # Ollama management helper
+      set -euo pipefail
+
+      case "${1:-status}" in
+        status)
+          echo "=== Ollama Status ==="
+          systemctl status ollama --no-pager -l 2>/dev/null || echo "Service not running"
+          echo ""
+          echo "=== Loaded Models ==="
+          ollama list 2>/dev/null || echo "Cannot connect to Ollama"
+          echo ""
+          echo "=== Running Models ==="
+          ollama ps 2>/dev/null || echo "Cannot connect to Ollama"
+          echo ""
+          echo "=== Disk Usage ==="
+          du -sh {{ ollama_models_path }} 2>/dev/null || echo "N/A"
+          ;;
+        pull)
+          [ -z "${2:-}" ] && echo "Usage: ollama-manage pull <model>" && exit 1
+          ollama pull "$2"
+          ;;
+        remove)
+          [ -z "${2:-}" ] && echo "Usage: ollama-manage remove <model>" && exit 1
+          ollama rm "$2"
+          ;;
+        restart)
+          systemctl restart ollama
+          echo "Ollama restarted"
+          ;;
+        *)
+          echo "Usage: ollama-manage {status|pull <model>|remove <model>|restart}"
+          ;;
+      esac
+
+# ── Summary ───────────────────────────────────────────────
+
+- name: Display setup information
+  ansible.builtin.debug:
+    msg:
+      - "Ollama installed successfully"
+      - "  Version: {{ ollama_version.stdout }}"
+      - "  API: http://{{ ollama_bind_address }}:{{ ollama_port }}"
+      - "  Models: {{ ollama_models_path }}"
+      - "  GPU: {{ 'Enabled' if ollama_has_gpu | default(false) else 'CPU-only' }}"
+      - "  API status: {{ 'Ready' if ollama_health.status | default(0) == 200 else 'Not responding' }}"
+      - ""
+      - "Quick start:"
+      - "  ollama pull llama3.1:8b     # Download a model"
+      - "  ollama run llama3.1:8b      # Chat with a model"
+      - "  ollama list                  # List installed models"
+      - "  ollama-manage status         # Full status overview"
+      - ""
+      - "{{ 'Models pulled: ' + (ollama_default_models | join(', ')) if ollama_default_models | length > 0 else 'No default models configured - pull manually with: ollama pull <model>' }}"

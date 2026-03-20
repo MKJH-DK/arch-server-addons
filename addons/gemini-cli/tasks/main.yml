@@ -1,0 +1,59 @@
+---
+# Gemini CLI - Google's AI coding assistant
+# https://github.com/google-gemini/gemini-cli
+
+- name: Ensure Node.js is installed
+  community.general.pacman:
+    name:
+      - nodejs
+      - npm
+    state: present
+
+- name: Check Node.js version
+  ansible.builtin.command:
+    cmd: node --version
+  register: node_version
+  changed_when: false
+
+- name: Verify minimum Node.js version
+  ansible.builtin.assert:
+    that:
+      - node_version.stdout | regex_replace('^v', '') is version(gemini_cli_min_node_version, '>=')
+    fail_msg: "Node.js {{ gemini_cli_min_node_version }}+ required, found {{ node_version.stdout }}"
+
+- name: Install Gemini CLI
+  ansible.builtin.command:
+    cmd: "npm install -g {{ gemini_cli_npm_package }}@{{ gemini_cli_version }}"
+  register: gemini_install
+  changed_when: "'added' in gemini_install.stdout or 'updated' in gemini_install.stdout"
+
+- name: Verify Gemini CLI is available
+  ansible.builtin.command:
+    cmd: gemini --version
+  register: gemini_version
+  changed_when: false
+  failed_when: false
+
+- name: Create Gemini config directory
+  ansible.builtin.file:
+    path: "{{ gemini_cli_config_dir }}"
+    state: directory
+    mode: '0700'
+
+- name: Check if API key is configured
+  ansible.builtin.shell:
+    cmd: "printenv {{ gemini_cli_env_var }} 2>/dev/null || true"
+  register: api_key_check
+  changed_when: false
+
+- name: Display setup information
+  ansible.builtin.debug:
+    msg:
+      - "Gemini CLI installed successfully"
+      - "  Version: {{ gemini_version.stdout | default('unknown') }}"
+      - "  Command: gemini"
+      - "  Config: {{ gemini_cli_config_dir }}"
+      - ""
+      - "{{ 'API key: CONFIGURED' if api_key_check.stdout | length > 0 else 'NEXT STEP: Set your API key:' }}"
+      - "{{ '' if api_key_check.stdout | length > 0 else '  export GEMINI_API_KEY=\"your-key-here\"' }}"
+      - "{{ '' if api_key_check.stdout | length > 0 else '  # Add to ~/.bashrc or ~/.zshrc for persistence' }}"

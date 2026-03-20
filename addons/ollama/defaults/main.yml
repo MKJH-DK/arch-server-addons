@@ -1,0 +1,38 @@
+---
+# Ollama - Run LLMs locally on your server
+# https://ollama.com
+
+# Service
+ollama_enabled: true
+ollama_bind_address: "127.0.0.1"
+ollama_port: 11434
+ollama_user: "ollama"
+ollama_group: "ollama"
+
+# Storage
+ollama_data_path: "/srv/ollama"
+ollama_models_path: "/srv/ollama/models"
+
+# Models to pull on deploy (empty = none, user pulls manually)
+# Common models: llama3.1, codellama, mistral, phi3, gemma2, qwen2.5-coder
+ollama_default_models: []
+# Example: ollama_default_models: ["llama3.1:8b", "codellama:7b"]
+
+# Resource limits
+ollama_memory_max: "8G"
+ollama_num_parallel: 1
+ollama_max_loaded_models: 1
+
+# GPU support (auto-detected, set to false to force CPU-only)
+ollama_gpu_enabled: true
+
+# Caddy reverse proxy (optional - expose Ollama API via web)
+ollama_caddy_enabled: false
+ollama_caddy_config: "/etc/caddy/conf.d/ollama.caddy"
+ollama_domain: ""
+ollama_url_prefix: "/ollama"
+
+# Open WebUI (optional web interface for Ollama)
+ollama_webui_enabled: false
+ollama_webui_port: 3000
+ollama_webui_caddy_config: "/etc/caddy/conf.d/ollama-webui.caddy"

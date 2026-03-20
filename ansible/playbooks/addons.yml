@@ -46,6 +46,24 @@
     crowdsec_firewall_enabled: "{{ crowdsec_firewall_enabled | default(true) }}"
     crowdsec_caddy_enabled: "{{ crowdsec_caddy_enabled | default(true) }}"
 
+    # Ollama variables
+    ollama_enabled: "{{ ollama_enabled | default(false) }}"
+    ollama_bind_address: "{{ ollama_bind_address | default('127.0.0.1') }}"
+    ollama_port: "{{ ollama_port | default(11434) }}"
+    ollama_data_path: "{{ ollama_data_path | default('/srv/ollama') }}"
+    ollama_models_path: "{{ ollama_models_path | default('/srv/ollama/models') }}"
+    ollama_memory_max: "{{ ollama_memory_max | default('8G') }}"
+    ollama_default_models: "{{ ollama_default_models | default([]) }}"
+    ollama_caddy_enabled: "{{ ollama_caddy_enabled | default(false) }}"
+    ollama_domain: "{{ ollama_domain | default('') }}"
+    ollama_url_prefix: "{{ ollama_url_prefix | default('/ollama') }}"
+
+    # AI CLI tool variables
+    claude_cli_enabled: "{{ claude_cli_enabled | default(false) }}"
+    gemini_cli_enabled: "{{ gemini_cli_enabled | default(false) }}"
+    shellgpt_enabled: "{{ shellgpt_enabled | default(false) }}"
+    codex_enabled: "{{ codex_enabled | default(false) }}"
+
   pre_tasks:
     - name: Ensure en_US.UTF-8 locale is present in locale.gen
       ansible.builtin.lineinfile:
@@ -111,6 +129,26 @@
       when: crowdsec_enabled | bool
       tags: [crowdsec, security]
 
+    - role: ../../addons/ollama
+      when: ollama_enabled | bool
+      tags: [ollama, ai-tools, llm]
+
+    - role: ../../addons/claude-cli
+      when: claude_cli_enabled | bool
+      tags: [claude, ai-tools]
+
+    - role: ../../addons/gemini-cli
+      when: gemini_cli_enabled | bool
+      tags: [gemini, ai-tools]
+
+    - role: ../../addons/shellgpt
+      when: shellgpt_enabled | bool
+      tags: [shellgpt, ai-tools]
+
+    - role: ../../addons/codex
+      when: codex_enabled | bool
+      tags: [codex, ai-tools]
+
   post_tasks:
     - name: Validate Caddy configuration
       ansible.builtin.command:
@@ -156,6 +194,17 @@
           - "  - Data path: {{ crowdsec_data_path }}"
           - "  - URL prefix: {{ crowdsec_url_prefix }}"
           - "  - Agent port: {{ crowdsec_agent_port }}"
+          - ""
+          - "Ollama: {{ 'ENABLED' if ollama_enabled | default(false) | bool else 'disabled' }}"
+          - "  - API: http://{{ ollama_bind_address }}:{{ ollama_port }}"
+          - "  - Data: {{ ollama_data_path }}"
+          - "  - Memory limit: {{ ollama_memory_max }}"
+          - ""
+          - "AI CLI Tools:"
+          - "  Claude Code: {{ 'ENABLED' if claude_cli_enabled | default(false) | bool else 'disabled' }}"
+          - "  Gemini CLI: {{ 'ENABLED' if gemini_cli_enabled | default(false) | bool else 'disabled' }}"
+          - "  ShellGPT: {{ 'ENABLED' if shellgpt_enabled | default(false) | bool else 'disabled' }}"
+          - "  Codex: {{ 'ENABLED' if codex_enabled | default(false) | bool else 'disabled' }}"
 
     - name: Display post-deployment instructions
       ansible.builtin.debug:

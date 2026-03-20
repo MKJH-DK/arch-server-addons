@@ -1,0 +1,25 @@
+---
+# ShellGPT (sgpt) - AI assistant for the command line
+# https://github.com/TheR1D/shell_gpt
+
+# Package
+shellgpt_pip_package: "shell-gpt"
+shellgpt_version: "latest"
+
+# Runtime
+shellgpt_requires_python: true
+shellgpt_min_python_version: "3.9"
+
+# API key - NEVER hardcode
+# Supports OpenAI, Azure, local LLMs via litellm
+# Users should set OPENAI_API_KEY in their shell profile
+shellgpt_env_var: "OPENAI_API_KEY"
+
+# Shell integration
+shellgpt_shell_alias: "sgpt"
+shellgpt_add_to_path: true
+
+# Configuration
+shellgpt_config_dir: "/root/.config/shell_gpt"
+shellgpt_default_model: "gpt-4"
+shellgpt_cache_enabled: true
