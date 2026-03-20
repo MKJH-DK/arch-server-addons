@@ -167,6 +167,7 @@ ansible-playbook -i "$BASE_INVENTORY" \
     -e "ollama_bind_address=${OLLAMA_BIND_ADDRESS:-127.0.0.1}" \
     -e "ollama_port=${OLLAMA_PORT:-11434}" \
     -e "ollama_data_path=${OLLAMA_DATA_PATH:-/srv/ollama}" \
+    -e "ollama_models_path=${OLLAMA_DATA_PATH:-/srv/ollama}/models" \
     -e "ollama_memory_max=${OLLAMA_MEMORY_MAX:-8G}" \
     -e "ollama_default_models=${OLLAMA_DEFAULT_MODELS:-[]}" \
     -e "ollama_caddy_enabled=${OLLAMA_CADDY_ENABLED:-false}" \

@@ -6,11 +6,11 @@
   vars:
     # Obsidian Web variables
     obsidian_enabled: "{{ obsidian_enabled | default(false) }}"
-    obsidian_vault_path: "{{ obsidian_vault_path | default('/srv/obsidian/vault') }}"
+    obsidian_vault_path: "{{ obsidian_vault_path | default('/srv/vault') }}"
     obsidian_domain: "{{ obsidian_domain | default('') }}"
     obsidian_url_prefix: "{{ obsidian_url_prefix | default('/wiki') }}"
-    obsidian_syncthing_user: "{{ obsidian_syncthing_user | default('root') }}"
-    obsidian_render_mode: "{{ obsidian_render_mode | default('client') }}"
+    obsidian_syncthing_user: "{{ obsidian_syncthing_user | default('admin') }}"
+    obsidian_render_mode: "{{ obsidian_render_mode | default('quartz') }}"
     
     # Backblaze Backup variables
     backblaze_enabled: "{{ backblaze_enabled | default(false) }}"
