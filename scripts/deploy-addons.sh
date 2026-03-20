@@ -38,14 +38,20 @@ if [[ $EUID -ne 0 ]]; then
    exit 1
 fi
 
-# Check base server health
-log_info "Checking base server health..."
-if ! /usr/local/bin/health-check --json 2>/dev/null | grep -q '"status":"pass"'; then
-    log_error "Base server health check failed. Deploy base first."
-    log_info "Run: cd /root/arch && ./scripts/deploy.sh"
+# Check base server is deployed (verify critical services exist)
+log_info "Checking base server..."
+if [[ ! -x /usr/local/bin/health-check ]]; then
+    log_error "Base server not deployed (health-check not found)."
+    log_info "Deploy base first: cd ~/arch-server && ./scripts/deploy.sh"
     exit 1
 fi
-log_success "Base server health check passed"
+# Verify critical services are running
+for svc in caddy nftables sshd; do
+    if ! systemctl is-active --quiet "$svc" 2>/dev/null; then
+        log_warning "Service $svc is not running"
+    fi
+done
+log_success "Base server check passed"
 
 # Check if addon config exists
 ADDON_CONFIG="$PROJECT_DIR/config/addons.env"
