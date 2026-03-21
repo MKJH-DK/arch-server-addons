@@ -21,6 +21,7 @@ services:
       - {{ immich_library_path }}:/usr/src/app/library
       - {{ immich_thumb_path }}:/usr/src/app/thumbs
       - {{ immich_profile_path }}:/usr/src/app/profile
+      - /mnt/media:/mnt/media:ro
       - /etc/localtime:/etc/localtime:ro
     depends_on:
       - immich-redis
