@@ -213,7 +213,7 @@ ansible-playbook -i "$BASE_INVENTORY" \
     -e "syncthing_domain=${SYNCTHING_DOMAIN:-}" \
     -e "cloudflare_tunnel_id=${CLOUDFLARE_TUNNEL_ID:-}" \
     -e "cloudflare_credentials_file=${CLOUDFLARE_CREDENTIALS_FILE:-}" \
-    -e "cloudflare_extra_domains=[$(echo "${CLOUDFLARE_EXTRA_DOMAINS:-}" | sed 's/,/","/g' | sed 's/^/"/' | sed 's/$/"/' | sed 's/^""$//')]" \
+    -e "{\"cloudflare_extra_domains\": $(python3 -c "import json,sys; print(json.dumps([x.strip() for x in '${CLOUDFLARE_EXTRA_DOMAINS:-}'.split(',') if x.strip()]))")}" \
     -e "claude_cli_enabled=${CLAUDE_CLI_ENABLED:-false}" \
     -e "gemini_cli_enabled=${GEMINI_CLI_ENABLED:-false}" \
     -e "shellgpt_enabled=${SHELLGPT_ENABLED:-false}" \
