@@ -119,8 +119,7 @@
 
     # ── AIDE (intrusion detection) — AUR package ─────────────────────
     - name: Check if AIDE is already installed
-      ansible.builtin.command:
-        cmd: command -v aide
+      ansible.builtin.shell: "pacman -Q aide 2>/dev/null"
       register: aide_installed
       changed_when: false
       failed_when: false
@@ -151,6 +150,7 @@
       ansible.builtin.file:
         path: /etc/sudoers.d/99-aide-temp
         state: absent
+      when: aide_installed.rc != 0
 
     - name: Show AIDE install result
       ansible.builtin.debug:
@@ -158,8 +158,7 @@
       when: aide_install_result is defined and aide_install_result is not skipped
 
     - name: Re-check if AIDE is now installed
-      ansible.builtin.command:
-        cmd: command -v aide
+      ansible.builtin.shell: "command -v aide"
       register: aide_available
       changed_when: false
       failed_when: false
@@ -616,7 +615,17 @@
     # ── Final cleanup: reset all failed units and show any remaining ──
     - name: Wait for services to settle after deploy
       ansible.builtin.pause:
-        seconds: 5
+        seconds: 10
+
+    - name: Reset failed podman healthcheck transient units
+      ansible.builtin.shell: |
+        systemctl --failed --no-legend --no-pager 2>/dev/null \
+          | awk '{print $1}' \
+          | while read unit; do
+              systemctl reset-failed "$unit" 2>/dev/null || true
+            done
+      changed_when: true
+      failed_when: false
 
     - name: Final reset of all failed systemd units
       ansible.builtin.command:

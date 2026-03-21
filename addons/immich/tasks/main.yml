@@ -58,17 +58,38 @@
     - "{{ immich_profile_path }}"
     - "{{ immich_backup_path }}"
 
-# ── 3. Generate credentials ────────────────────────────────────────────────
+# ── 3. Generate credentials (reuse existing on subsequent deploys) ─────────
 
-- name: Generate random DB password if not provided
+- name: Check for existing credentials file
+  ansible.builtin.stat:
+    path: "{{ immich_data_path }}/.credentials"
+  register: immich_creds_file
+
+- name: Read existing credentials
+  ansible.builtin.shell: cat "{{ immich_data_path }}/.credentials"
+  register: immich_existing_creds
+  changed_when: false
+  when: immich_creds_file.stat.exists
+
+- name: Reuse existing DB password
+  ansible.builtin.set_fact:
+    immich_db_password: "{{ immich_existing_creds.stdout | regex_search('IMMICH_DB_PASSWORD=(.+)', '\\1') | first }}"
+  when: vault_immich_db_password is not defined and immich_creds_file.stat.exists and immich_existing_creds.stdout is search('IMMICH_DB_PASSWORD=')
+
+- name: Reuse existing admin password
+  ansible.builtin.set_fact:
+    immich_admin_password: "{{ immich_existing_creds.stdout | regex_search('IMMICH_ADMIN_PASSWORD=(.+)', '\\1') | first }}"
+  when: vault_immich_admin_password is not defined and immich_creds_file.stat.exists and immich_existing_creds.stdout is search('IMMICH_ADMIN_PASSWORD=')
+
+- name: Generate random DB password (first deploy only)
   ansible.builtin.set_fact:
     immich_db_password: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters,digits') }}"
-  when: vault_immich_db_password is not defined
+  when: vault_immich_db_password is not defined and not immich_creds_file.stat.exists
 
-- name: Generate random admin password if not provided
+- name: Generate random admin password (first deploy only)
   ansible.builtin.set_fact:
     immich_admin_password: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters,digits') }}"
-  when: vault_immich_admin_password is not defined
+  when: vault_immich_admin_password is not defined and not immich_creds_file.stat.exists
 
 # ── 4. Deploy configuration files ──────────────────────────────────────────
 
