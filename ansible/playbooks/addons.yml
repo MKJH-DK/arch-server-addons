@@ -236,6 +236,27 @@
       when: cloudflare_tunnel_id | default('') | length > 0
       register: cloudflared_config
 
+    - name: Collect all tunnel hostnames
+      ansible.builtin.set_fact:
+        cloudflare_all_hostnames: >-
+          {{
+            (obsidian_sites | default([]) | selectattr('domain', 'defined') | map(attribute='domain') | select('ne', '') | list)
+            + (cloudflare_extra_domains | default([]) | select('ne', '') | list)
+            + ([immich_domain] if immich_domain | default('') | length > 0 else [])
+            + ([syncthing_domain] if syncthing_domain | default('') | length > 0 else [])
+            + ([ollama_domain] if ollama_domain | default('') | length > 0 else [])
+          }}
+      when: cloudflare_tunnel_id | default('') | length > 0
+
+    - name: Create DNS records for tunnel hostnames
+      ansible.builtin.command:
+        cmd: cloudflared tunnel route dns {{ cloudflare_tunnel_id }} {{ item }}
+      loop: "{{ cloudflare_all_hostnames | default([]) }}"
+      register: dns_route
+      changed_when: "'Added' in dns_route.stdout | default('')"
+      failed_when: false
+      when: cloudflare_tunnel_id | default('') | length > 0
+
     - name: Restart cloudflared
       ansible.builtin.systemd:
         name: cloudflared
