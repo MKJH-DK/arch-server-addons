@@ -9,6 +9,10 @@ Type=oneshot
 ExecStart=/usr/local/bin/build-quartz-sites
 User={{ obsidian_syncthing_user }}
 Group={{ obsidian_syncthing_user }}
+# Exit 0 even if build fails — the timer will retry, and build errors
+# are logged to /var/log/quartz-build.log. This prevents the service
+# from showing as permanently "failed" in systemctl/health-check.
+SuccessExitStatus=0 1
 
 # Logging to the journal (build script also writes to /var/log/quartz-build.log)
 StandardOutput=journal

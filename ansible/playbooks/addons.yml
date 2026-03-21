@@ -117,6 +117,182 @@
         - /srv/backups
         - /etc/caddy/conf.d
 
+    # ── AIDE (intrusion detection) ──────────────────────────────────────
+    - name: Install AIDE
+      ansible.builtin.pacman:
+        name: aide
+        state: present
+
+    - name: Check if AIDE database exists
+      ansible.builtin.stat:
+        path: /var/lib/aide/aide.db.gz
+      register: aide_db
+
+    - name: Initialize AIDE database (first deploy only)
+      ansible.builtin.command:
+        cmd: aide --init
+      when: not aide_db.stat.exists
+      changed_when: true
+
+    - name: Move new AIDE database into place
+      ansible.builtin.copy:
+        src: /var/lib/aide/aide.db.new.gz
+        dest: /var/lib/aide/aide.db.gz
+        remote_src: true
+        mode: '0600'
+      when: not aide_db.stat.exists
+
+    - name: Create AIDE check service
+      ansible.builtin.copy:
+        content: |
+          [Unit]
+          Description=AIDE file integrity check
+
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/bin/aide --check
+          Nice=19
+          IOSchedulingClass=idle
+        dest: /etc/systemd/system/aide-check.service
+        mode: '0644'
+
+    - name: Create AIDE check timer
+      ansible.builtin.copy:
+        content: |
+          [Unit]
+          Description=Daily AIDE integrity check
+
+          [Timer]
+          OnCalendar=*-*-* 04:00:00
+          RandomizedDelaySec=1800
+          Persistent=true
+
+          [Install]
+          WantedBy=timers.target
+        dest: /etc/systemd/system/aide-check.timer
+        mode: '0644'
+
+    - name: Enable AIDE check timer
+      ansible.builtin.systemd:
+        name: aide-check.timer
+        state: started
+        enabled: true
+        daemon_reload: true
+
+    # ── Journal vacuum ──────────────────────────────────────────────────
+    - name: Vacuum systemd journal to 200M
+      ansible.builtin.command:
+        cmd: journalctl --vacuum-size=200M
+      changed_when: true
+      failed_when: false
+
+    - name: Set journal max size permanently
+      ansible.builtin.lineinfile:
+        path: /etc/systemd/journald.conf
+        regexp: '^#?SystemMaxUse='
+        line: 'SystemMaxUse=200M'
+      failed_when: false
+
+    # ── Btrfs snapshots via snapper ─────────────────────────────────────
+    - name: Install snapper
+      ansible.builtin.pacman:
+        name: snapper
+        state: present
+
+    - name: Check if snapper root config exists
+      ansible.builtin.stat:
+        path: /etc/snapper/configs/root
+      register: snapper_root_config
+
+    - name: Create snapper config for root filesystem
+      ansible.builtin.command:
+        cmd: snapper -c root create-config /
+      when: not snapper_root_config.stat.exists
+      changed_when: true
+      failed_when: false
+
+    - name: Check for existing Btrfs snapshots
+      ansible.builtin.shell: snapper -c root list 2>/dev/null | grep -c '|'
+      register: snapshot_count
+      changed_when: false
+      failed_when: false
+
+    - name: Create initial Btrfs snapshot
+      ansible.builtin.command:
+        cmd: snapper -c root create --description "Initial deploy snapshot"
+      when: (snapshot_count.stdout | default('0') | int) < 2
+      changed_when: true
+      failed_when: false
+
+    # ── Container security policy ───────────────────────────────────────
+    - name: Ensure containers config directory exists
+      ansible.builtin.file:
+        path: /etc/containers
+        state: directory
+        mode: '0755'
+
+    - name: Harden containers.conf (no_new_privileges + drop ALL caps)
+      ansible.builtin.copy:
+        content: |
+          [containers]
+          no_new_privileges = true
+          default_capabilities = []
+        dest: /etc/containers/containers.conf
+        mode: '0644'
+        force: false
+
+    - name: Harden container security policy (reject unsigned images by default)
+      ansible.builtin.copy:
+        content: |
+          {
+            "default": [
+              {
+                "type": "reject"
+              }
+            ],
+            "transports": {
+              "docker": {
+                "ghcr.io": [
+                  {
+                    "type": "insecureAcceptAnything"
+                  }
+                ],
+                "docker.io": [
+                  {
+                    "type": "insecureAcceptAnything"
+                  }
+                ],
+                "registry.fedoraproject.org": [
+                  {
+                    "type": "insecureAcceptAnything"
+                  }
+                ],
+                "quay.io": [
+                  {
+                    "type": "insecureAcceptAnything"
+                  }
+                ]
+              },
+              "dir": {
+                "": [
+                  {
+                    "type": "insecureAcceptAnything"
+                  }
+                ]
+              },
+              "oci": {
+                "": [
+                  {
+                    "type": "insecureAcceptAnything"
+                  }
+                ]
+              }
+            }
+          }
+        dest: /etc/containers/policy.json
+        mode: '0644'
+        force: false
+
     # ── Basic auth credentials for protected services ──────────────────────
     - name: Check if auth credentials already exist
       ansible.builtin.stat:
@@ -264,6 +440,57 @@
         name: cloudflared
         state: restarted
       when: cloudflared_config is changed
+      failed_when: false
+
+    # ── Reset failed systemd units ──────────────────────────────────────
+    # ── Update health-check script from base repo ─────────────────────
+    - name: Find base server health-check source
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ playbook_dir }}/../../../../arch-server/src/ansible/roles/base_hardening/files/health-check"
+        - "/home/admin/arch-server/src/ansible/roles/base_hardening/files/health-check"
+        - "/root/arch-server/src/ansible/roles/base_hardening/files/health-check"
+      register: hc_candidates
+
+    - name: Update health-check if source found
+      ansible.builtin.copy:
+        src: "{{ item.stat.path }}"
+        dest: /usr/local/bin/health-check
+        mode: '0755'
+      loop: "{{ hc_candidates.results }}"
+      when: item.stat.exists | default(false)
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Reset failed state for quartz-build (oneshot — failure is expected on first deploy)
+      ansible.builtin.command:
+        cmd: systemctl reset-failed quartz-build.service
+      changed_when: true
+      failed_when: false
+      when: obsidian_enabled | bool
+
+    - name: Reset all failed systemd units
+      ansible.builtin.command:
+        cmd: systemctl reset-failed
+      changed_when: true
+      failed_when: false
+
+    # ── Ensure CrowdSec is running ──────────────────────────────────────
+    - name: Check CrowdSec service status
+      ansible.builtin.command:
+        cmd: systemctl is-active crowdsec
+      register: crowdsec_status
+      changed_when: false
+      failed_when: false
+      when: crowdsec_enabled | bool
+
+    - name: Restart CrowdSec if not running
+      ansible.builtin.systemd:
+        name: crowdsec
+        state: restarted
+        daemon_reload: true
+      when: crowdsec_enabled | bool and crowdsec_status.stdout | default('') != 'active'
       failed_when: false
 
     - name: Display addon deployment summary

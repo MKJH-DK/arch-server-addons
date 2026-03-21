@@ -26,11 +26,19 @@
 - name: Install CrowdSec via AUR helper
   ansible.builtin.command:
     cmd: "{{ aur_helper.stdout | trim }} -S --noconfirm --needed crowdsec crowdsec-firewall-bouncer-nftables"
+  become: true
   become_user: "{{ crowdsec_aur_user | default('admin') }}"
   when: cscli_check.rc != 0 and aur_helper.rc == 0
+  register: aur_install
+  failed_when: false
 
-- name: Install CrowdSec from binary release (no AUR helper)
-  when: cscli_check.rc != 0 and aur_helper.rc != 0
+- name: Fall back to binary install if AUR failed
+  ansible.builtin.set_fact:
+    crowdsec_aur_failed: "{{ aur_install is defined and aur_install.rc | default(0) != 0 }}"
+  when: cscli_check.rc != 0 and aur_helper.rc == 0
+
+- name: Install CrowdSec from binary release (no AUR helper or AUR failed)
+  when: cscli_check.rc != 0 and (aur_helper.rc != 0 or crowdsec_aur_failed | default(false) | bool)
   block:
     - name: Get latest CrowdSec release version
       ansible.builtin.uri:
@@ -124,11 +132,24 @@
   changed_when: true
   failed_when: false
 
+- name: Reload systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: true
+
 - name: Enable and start CrowdSec agent
   ansible.builtin.systemd:
     name: crowdsec
     state: started
     enabled: true
+  register: crowdsec_start
+  failed_when: false
+
+- name: Retry CrowdSec start after delay
+  ansible.builtin.systemd:
+    name: crowdsec
+    state: restarted
+  when: crowdsec_start is failed
+  failed_when: false
 
 - name: Check for firewall bouncer service
   ansible.builtin.shell: "systemctl list-unit-files | grep -o 'crowdsec-firewall[^ ]*\\.service' | head -1"
