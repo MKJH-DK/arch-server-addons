@@ -10,7 +10,6 @@ services:
     image: ghcr.io/immich-app/immich-server:{{ immich_version }}
     container_name: immich-server
     restart: unless-stopped
-    command: ['start.sh', 'immich']
     network_mode: host
     environment:
       - NODE_ENV={{ immich_environment }}
@@ -21,7 +20,9 @@ services:
       - {{ immich_library_path }}:/usr/src/app/library
       - {{ immich_thumb_path }}:/usr/src/app/thumbs
       - {{ immich_profile_path }}:/usr/src/app/profile
-      - /mnt/media:/mnt/media:ro
+{% if immich_external_library_path is defined and immich_external_library_path | length > 0 %}
+      - {{ immich_external_library_path }}:{{ immich_external_library_path }}:ro
+{% endif %}
       - /etc/localtime:/etc/localtime:ro
     depends_on:
       - immich-redis

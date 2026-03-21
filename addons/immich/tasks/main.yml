@@ -122,12 +122,37 @@
 
 # ── 5. Start services (host networking — no bridge needed) ──────────────────
 
+- name: Stop existing Immich containers (clean restart)
+  ansible.builtin.shell: |
+    podman-compose -f {{ immich_docker_compose_path }} down 2>/dev/null || true
+  args:
+    chdir: "{{ immich_data_path }}"
+  changed_when: true
+  failed_when: false
+
+- name: Reset failed podman units before starting
+  ansible.builtin.command:
+    cmd: systemctl reset-failed
+  changed_when: true
+  failed_when: false
+
 - name: Start Immich services with podman-compose
   ansible.builtin.command:
     cmd: podman-compose -f {{ immich_docker_compose_path }} up -d
     chdir: "{{ immich_data_path }}"
   register: immich_compose
-  changed_when: "'Creating' in immich_compose.stdout or 'Starting' in immich_compose.stdout"
+  changed_when: true
+
+- name: Wait for Immich database to be ready
+  ansible.builtin.shell: |
+    for i in $(seq 1 30); do
+      podman exec immich-database pg_isready -U {{ immich_db_user }} -d {{ immich_db_name }} 2>/dev/null && exit 0
+      sleep 2
+    done
+    exit 1
+  register: db_ready
+  changed_when: false
+  failed_when: false
 
 - name: Wait for Immich server to be ready
   ansible.builtin.uri:
@@ -135,10 +160,14 @@
     method: GET
     timeout: 60
   register: immich_health
-  retries: 10
+  retries: 15
   delay: 10
   until: immich_health.status == 200
   failed_when: false
+
+- name: Show Immich startup status
+  ansible.builtin.debug:
+    msg: "Immich server: {{ 'READY' if immich_health.status | default(0) == 200 else 'NOT RESPONDING — check logs: podman-compose -f ' + immich_docker_compose_path + ' logs' }}"
 
 # ── 7. Deploy helper scripts ───────────────────────────────────────────────
 

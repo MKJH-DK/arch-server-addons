@@ -124,33 +124,32 @@
       changed_when: false
       failed_when: false
 
-    - name: Check for AUR helper
-      ansible.builtin.shell: "command -v paru || command -v yay"
-      register: aide_aur_helper
-      changed_when: false
-      failed_when: false
+    - name: Install AIDE build dependencies
+      ansible.builtin.pacman:
+        name:
+          - base-devel
+          - mhash
+          - curl
+        state: present
       when: aide_installed.rc != 0
 
-    - name: Grant admin temporary NOPASSWD sudo for AUR install
-      ansible.builtin.copy:
-        content: "admin ALL=(ALL) NOPASSWD: ALL\n"
-        dest: /etc/sudoers.d/99-aide-temp
-        mode: '0440'
-        validate: 'visudo -cf %s'
-      when: aide_installed.rc != 0 and aide_aur_helper.rc | default(1) == 0
-
-    - name: Install AIDE via AUR helper (as admin user, skip PGP check)
+    - name: Build and install AIDE from AUR (build as admin, install as root)
       ansible.builtin.shell: |
-        runuser -u admin -- {{ aide_aur_helper.stdout | trim }} -S --noconfirm --needed --skipreview --nopgpfetch --nosign --mflags="--skippgpcheck" aide
-      when: aide_installed.rc != 0 and aide_aur_helper.rc | default(1) == 0
+        set -e
+        rm -rf /tmp/aide-build
+        # Download and extract PKGBUILD from AUR
+        su -s /bin/bash admin -c '
+          mkdir -p /tmp/aide-build && cd /tmp/aide-build
+          curl -sL "https://aur.archlinux.org/cgit/aur.git/snapshot/aide.tar.gz" | tar xz
+          cd aide
+          makepkg --noconfirm --skippgpcheck --nodeps 2>&1
+        '
+        # Install the built package as root (no sudo needed)
+        pacman -U --noconfirm /tmp/aide-build/aide/aide-*.pkg.tar.zst
+        rm -rf /tmp/aide-build
+      when: aide_installed.rc != 0
       register: aide_install_result
       failed_when: false
-
-    - name: Remove temporary NOPASSWD sudo
-      ansible.builtin.file:
-        path: /etc/sudoers.d/99-aide-temp
-        state: absent
-      when: aide_installed.rc != 0
 
     - name: Show AIDE install result
       ansible.builtin.debug:

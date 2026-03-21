@@ -2,8 +2,11 @@
 # Immich Addon - Handlers (Podman)
 
 - name: restart immich
-  ansible.builtin.command:
-    cmd: podman-compose -f {{ immich_docker_compose_path }} restart
+  ansible.builtin.shell: |
+    podman-compose -f {{ immich_docker_compose_path }} down 2>/dev/null || true
+    systemctl reset-failed 2>/dev/null || true
+    podman-compose -f {{ immich_docker_compose_path }} up -d
+  args:
     chdir: "{{ immich_data_path }}"
 
 - name: reload caddy
