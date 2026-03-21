@@ -187,6 +187,16 @@
 
 # ── 7. Systemd build timer ───────────────────────────────────────────────────
 
+- name: Create Quartz build log file
+  ansible.builtin.file:
+    path: /var/log/quartz-build.log
+    state: touch
+    mode: "0644"
+    owner: "{{ obsidian_syncthing_user }}"
+    group: "{{ obsidian_syncthing_user }}"
+    modification_time: preserve
+    access_time: preserve
+
 - name: Deploy Quartz build systemd service unit
   ansible.builtin.template:
     src: quartz-build.service.j2
