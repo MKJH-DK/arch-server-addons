@@ -4,7 +4,7 @@ Documentation=man:systemd.timer(5)
 Requires=immich-backup.service
 
 [Timer]
-OnCalendar={{ immich_backup_schedule }}
+OnCalendar=*-*-* 02:00:00
 Persistent=true
 RandomizedDelaySec=1800
 
