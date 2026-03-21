@@ -134,7 +134,7 @@
 
     - name: Install AIDE via AUR helper (as admin user, skip PGP check)
       ansible.builtin.shell: |
-        sudo -u admin {{ aide_aur_helper.stdout | trim }} -S --noconfirm --needed --skipreview --nopgpfetch --nosign --mflags="--skippgpcheck" aide
+        runuser -u admin -- {{ aide_aur_helper.stdout | trim }} -S --noconfirm --needed --skipreview --nopgpfetch --nosign --mflags="--skippgpcheck" aide
       when: aide_installed.rc != 0 and aide_aur_helper.rc | default(1) == 0
       register: aide_install_result
       failed_when: false
@@ -587,6 +587,10 @@
       when: crowdsec_enabled | bool and crowdsec_final is defined and crowdsec_final is not skipped
 
     # ── Final cleanup: reset all failed units and show any remaining ──
+    - name: Wait for services to settle after deploy
+      ansible.builtin.pause:
+        seconds: 5
+
     - name: Final reset of all failed systemd units
       ansible.builtin.command:
         cmd: systemctl reset-failed
@@ -598,9 +602,22 @@
       register: final_failed_services
       changed_when: false
 
-    - name: Show remaining failed services
+    - name: Show remaining failed services (detail)
       ansible.builtin.debug:
         msg: "Failed services after deploy: {{ final_failed_services.stdout | default('none') }}"
+      when: final_failed_services.stdout | default('') | length > 0
+
+    - name: Restart any failed Immich containers
+      ansible.builtin.shell: |
+        cd {{ immich_data_path }} && podman-compose restart 2>/dev/null || true
+      when: immich_enabled | bool and final_failed_services.stdout is search('immich|podman')
+      failed_when: false
+
+    - name: Second reset of failed units after restarts
+      ansible.builtin.command:
+        cmd: systemctl reset-failed
+      changed_when: true
+      failed_when: false
       when: final_failed_services.stdout | default('') | length > 0
 
     - name: Display addon deployment summary
