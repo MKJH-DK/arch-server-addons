@@ -117,11 +117,28 @@
         - /srv/backups
         - /etc/caddy/conf.d
 
-    # ── AIDE (intrusion detection) ──────────────────────────────────────
-    - name: Install AIDE
-      ansible.builtin.pacman:
-        name: aide
-        state: present
+    # ── AIDE (intrusion detection) — AUR package ─────────────────────
+    - name: Check if AIDE is already installed
+      ansible.builtin.command:
+        cmd: command -v aide
+      register: aide_installed
+      changed_when: false
+      failed_when: false
+
+    - name: Check for AUR helper
+      ansible.builtin.shell: "command -v paru || command -v yay"
+      register: aide_aur_helper
+      changed_when: false
+      failed_when: false
+      when: aide_installed.rc != 0
+
+    - name: Install AIDE via AUR helper
+      ansible.builtin.command:
+        cmd: "{{ aide_aur_helper.stdout | trim }} -S --noconfirm --needed aide"
+      become: true
+      become_user: admin
+      when: aide_installed.rc != 0 and aide_aur_helper.rc | default(1) == 0
+      failed_when: false
 
     - name: Check if AIDE database exists
       ansible.builtin.stat:
