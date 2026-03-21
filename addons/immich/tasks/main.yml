@@ -27,6 +27,16 @@
     state: started
     enabled: true
 
+- name: Configure Podman for hardened kernel (disable default sysctls)
+  ansible.builtin.copy:
+    dest: /etc/containers/containers.conf
+    content: |
+      [containers]
+      default_sysctls = []
+    mode: '0644'
+    owner: root
+    group: root
+
 # ── 2. Create directories ──────────────────────────────────────────────────
 
 - name: Create Immich directories
@@ -87,21 +97,7 @@
     group: root
   notify: reload caddy
 
-# ── 5. Create Podman network ───────────────────────────────────────────────
-
-- name: Check if Podman network exists
-  ansible.builtin.command:
-    cmd: podman network exists {{ immich_network_name }}
-  register: podman_net_check
-  changed_when: false
-  failed_when: false
-
-- name: Create Podman network for Immich
-  ansible.builtin.command:
-    cmd: podman network create {{ immich_network_name }}
-  when: podman_net_check.rc != 0
-
-# ── 6. Start services ──────────────────────────────────────────────────────
+# ── 5. Start services (host networking — no bridge needed) ──────────────────
 
 - name: Start Immich services with podman-compose
   ansible.builtin.command:
