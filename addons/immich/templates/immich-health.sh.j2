@@ -43,7 +43,7 @@ check_docker_services() {
     while IFS= read -r service; do
         ((total_services++))
         local status
-        status=$(podman-compose -f "$IMMICH_DATA_PATH/docker-compose.yml" ps -q "$service" | xargs podman inspect --format='{{.State.Status}}' 2>/dev/null || echo "not_found")
+        status=$(podman-compose -f "$IMMICH_DATA_PATH/docker-compose.yml" ps -q "$service" | xargs podman inspect --format='{{ '{{.State.Status}}' }}' 2>/dev/null || echo "not_found")
         
         if [[ "$status" == "running" ]]; then
             log_success "$service: running"
@@ -187,9 +187,9 @@ check_memory() {
     containers=(immich-server immich-machine-learning immich-database immich-redis)
     
     for container in "${containers[@]}"; do
-        if podman ps --format "table {{.Names}}" | grep -q "$container"; then
+        if podman ps --format "table {{ '{{.Names}}' }}" | grep -q "$container"; then
             local mem_usage_container
-            mem_usage_container=$(podman stats --no-stream --format "table {{.MemPerc}}" "$container" | tail -1 | sed 's/%//' || echo "0")
+            mem_usage_container=$(podman stats --no-stream --format "table {{ '{{.MemPerc}}' }}" "$container" | tail -1 | sed 's/%//' || echo "0")
             
             if [[ -n "$mem_usage_container" && "$mem_usage_container" != "0" ]]; then
                 log_success "$container: ${mem_usage_container}% memory"
