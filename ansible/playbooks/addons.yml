@@ -134,7 +134,7 @@
 
     - name: Install AIDE via AUR helper (as admin user, skip PGP check)
       ansible.builtin.shell: |
-        sudo -u admin {{ aide_aur_helper.stdout | trim }} -S --noconfirm --needed --mflags --skippgpcheck aide
+        sudo -u admin {{ aide_aur_helper.stdout | trim }} -S --noconfirm --needed --skipreview --nopgpfetch --nosign --mflags="--skippgpcheck" aide
       when: aide_installed.rc != 0 and aide_aur_helper.rc | default(1) == 0
       register: aide_install_result
       failed_when: false
@@ -236,15 +236,6 @@
         path: /etc/snapper/configs/root
       register: snapper_root_config
 
-    - name: Remove orphaned .snapshots subvolume (exists without config)
-      ansible.builtin.shell: |
-        if btrfs subvolume show /.snapshots &>/dev/null && [ ! -f /etc/snapper/configs/root ]; then
-          btrfs subvolume delete /.snapshots
-        fi
-      when: not snapper_root_config.stat.exists
-      changed_when: true
-      failed_when: false
-
     - name: Create snapper config for root filesystem
       ansible.builtin.command:
         cmd: snapper -c root create-config /
@@ -253,10 +244,37 @@
       register: snapper_config_result
       failed_when: false
 
-    - name: Show snapper config result
-      ansible.builtin.debug:
-        msg: "snapper create-config: {{ snapper_config_result.stderr | default('OK') }}"
-      when: snapper_config_result is defined and snapper_config_result is changed
+    - name: Manually create snapper root config if create-config failed
+      ansible.builtin.copy:
+        content: |
+          SUBVOLUME="/"
+          FSTYPE="btrfs"
+          ALLOW_USERS=""
+          ALLOW_GROUPS=""
+          TIMELINE_CREATE="yes"
+          TIMELINE_CLEANUP="yes"
+          TIMELINE_MIN_AGE="1800"
+          TIMELINE_LIMIT_HOURLY="10"
+          TIMELINE_LIMIT_DAILY="10"
+          TIMELINE_LIMIT_WEEKLY="0"
+          TIMELINE_LIMIT_MONTHLY="10"
+          TIMELINE_LIMIT_YEARLY="10"
+          NUMBER_CLEANUP="yes"
+          NUMBER_MIN_AGE="1800"
+          NUMBER_LIMIT="50"
+          NUMBER_LIMIT_IMPORTANT="10"
+        dest: /etc/snapper/configs/root
+        mode: '0640'
+        force: false
+      when: not snapper_root_config.stat.exists
+
+    - name: Ensure root is listed in snapper SNAPPER_CONFIGS
+      ansible.builtin.lineinfile:
+        path: /etc/conf.d/snapper
+        regexp: '^SNAPPER_CONFIGS='
+        line: 'SNAPPER_CONFIGS="root"'
+        create: true
+        mode: '0644'
 
     - name: Check for existing Btrfs snapshots
       ansible.builtin.shell: snapper -c root list 2>/dev/null | awk 'NR > 2 && NF { c++ } END { print c+0 }'
