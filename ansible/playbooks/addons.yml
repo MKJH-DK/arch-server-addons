@@ -234,13 +234,13 @@
         owner: root
         group: root
       when: cloudflare_tunnel_id | default('') | length > 0
-      notify: restart cloudflared
+      register: cloudflared_config
 
     - name: Restart cloudflared
       ansible.builtin.systemd:
         name: cloudflared
         state: restarted
-      when: cloudflare_tunnel_id | default('') | length > 0
+      when: cloudflared_config is changed
       failed_when: false
 
     - name: Display addon deployment summary
