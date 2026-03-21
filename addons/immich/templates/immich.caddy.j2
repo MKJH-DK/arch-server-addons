@@ -1,5 +1,7 @@
 {# Immich Caddy Configuration #}
-{%- if immich_domain | length > 0 -%}
+{# Only generates config when a domain is set. #}
+{# Without a domain, Immich is accessible directly on port {{ immich_server_port }}. #}
+{% if immich_domain | length > 0 %}
 http://{{ immich_domain }} {
     reverse_proxy localhost:{{ immich_server_port }} {
         header_up Connection {>Connection}
@@ -32,17 +34,4 @@ http://{{ immich_domain }} {
         respond "OK" 200
     }
 }
-{%- else -%}
-:80 {
-    handle {{ immich_url_prefix }}/* {
-        reverse_proxy localhost:{{ immich_server_port }} {
-            header_up Connection {>Connection}
-            header_up Upgrade {>Upgrade}
-        }
-    }
-
-    handle {{ immich_url_prefix }}/health {
-        respond "OK" 200
-    }
-}
-{%- endif -%}
+{% endif %}
