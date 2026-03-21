@@ -71,6 +71,7 @@
     cloudflare_tunnel_id: "{{ cloudflare_tunnel_id | default('') }}"
     cloudflare_credentials_file: "{{ cloudflare_credentials_file | default('') }}"
     cloudflare_extra_domains: "{{ cloudflare_extra_domains | default([]) }}"
+    cloudflare_ssh_domain: "{{ cloudflare_ssh_domain | default('') }}"
 
   pre_tasks:
     - name: Ensure en_US.UTF-8 locale is present in locale.gen
@@ -245,6 +246,7 @@
             + ([immich_domain] if immich_domain | default('') | length > 0 else [])
             + ([syncthing_domain] if syncthing_domain | default('') | length > 0 else [])
             + ([ollama_domain] if ollama_domain | default('') | length > 0 else [])
+            + ([cloudflare_ssh_domain] if cloudflare_ssh_domain | default('') | length > 0 else [])
           }}
       when: cloudflare_tunnel_id | default('') | length > 0
 

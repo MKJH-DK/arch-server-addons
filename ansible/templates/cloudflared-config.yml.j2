@@ -30,4 +30,8 @@ ingress:
   - hostname: {{ ollama_domain }}
     service: http://localhost:80
 {% endif %}
+{% if cloudflare_ssh_domain | default('') | length > 0 %}
+  - hostname: {{ cloudflare_ssh_domain }}
+    service: ssh://localhost:22
+{% endif %}
   - service: http_status:404

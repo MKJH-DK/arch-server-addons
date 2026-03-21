@@ -211,6 +211,7 @@ ansible-playbook -i "$BASE_INVENTORY" \
     -e "ollama_domain=${OLLAMA_DOMAIN:-}" \
     -e "ollama_url_prefix=${OLLAMA_URL_PREFIX:-/ollama}" \
     -e "syncthing_domain=${SYNCTHING_DOMAIN:-}" \
+    -e "cloudflare_ssh_domain=${CLOUDFLARE_SSH_DOMAIN:-}" \
     -e "cloudflare_tunnel_id=${CLOUDFLARE_TUNNEL_ID:-}" \
     -e "cloudflare_credentials_file=${CLOUDFLARE_CREDENTIALS_FILE:-}" \
     -e "{\"cloudflare_extra_domains\": $(python3 -c "import json,sys; print(json.dumps([x.strip() for x in '${CLOUDFLARE_EXTRA_DOMAINS:-}'.split(',') if x.strip()]))")}" \
