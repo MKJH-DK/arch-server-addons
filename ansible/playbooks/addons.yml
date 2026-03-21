@@ -231,21 +231,10 @@
         name: snapper
         state: present
 
-    - name: Check if .snapshots subvolume exists
-      ansible.builtin.stat:
-        path: /.snapshots
-      register: snapshots_dir
-
     - name: Check if snapper root config exists
       ansible.builtin.stat:
         path: /etc/snapper/configs/root
       register: snapper_root_config
-
-    - name: Remove empty .snapshots dir if not a subvolume (snapper create-config needs it absent)
-      ansible.builtin.file:
-        path: /.snapshots
-        state: absent
-      when: snapshots_dir.stat.exists and not snapper_root_config.stat.exists
 
     - name: Create snapper config for root filesystem
       ansible.builtin.command:
