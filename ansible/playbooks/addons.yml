@@ -132,14 +132,9 @@
       failed_when: false
       when: aide_installed.rc != 0
 
-    - name: Install AIDE via AUR helper
+    - name: Install AIDE via AUR helper (as admin user)
       ansible.builtin.shell: |
-        HOME=/home/admin {{ aide_aur_helper.stdout | trim }} -S --noconfirm --needed aide
-      become: true
-      become_user: admin
-      environment:
-        HOME: /home/admin
-        USER: admin
+        sudo -u admin {{ aide_aur_helper.stdout | trim }} -S --noconfirm --needed aide
       when: aide_installed.rc != 0 and aide_aur_helper.rc | default(1) == 0
       register: aide_install_result
       failed_when: false
@@ -236,20 +231,37 @@
         name: snapper
         state: present
 
+    - name: Check if .snapshots subvolume exists
+      ansible.builtin.stat:
+        path: /.snapshots
+      register: snapshots_dir
+
     - name: Check if snapper root config exists
       ansible.builtin.stat:
         path: /etc/snapper/configs/root
       register: snapper_root_config
+
+    - name: Remove empty .snapshots dir if not a subvolume (snapper create-config needs it absent)
+      ansible.builtin.file:
+        path: /.snapshots
+        state: absent
+      when: snapshots_dir.stat.exists and not snapper_root_config.stat.exists
 
     - name: Create snapper config for root filesystem
       ansible.builtin.command:
         cmd: snapper -c root create-config /
       when: not snapper_root_config.stat.exists
       changed_when: true
+      register: snapper_config_result
       failed_when: false
 
+    - name: Show snapper config result
+      ansible.builtin.debug:
+        msg: "snapper create-config: {{ snapper_config_result.stderr | default('OK') }}"
+      when: snapper_config_result is changed
+
     - name: Check for existing Btrfs snapshots
-      ansible.builtin.shell: snapper -c root list 2>/dev/null | grep -c '|'
+      ansible.builtin.shell: snapper -c root list 2>/dev/null | awk 'NR > 2 && NF { c++ } END { print c+0 }'
       register: snapshot_count
       changed_when: false
       failed_when: false
@@ -257,9 +269,15 @@
     - name: Create initial Btrfs snapshot
       ansible.builtin.command:
         cmd: snapper -c root create --description "Initial deploy snapshot"
-      when: (snapshot_count.stdout | default('0') | int) < 2
+      when: (snapshot_count.stdout | default('0') | int) == 0
       changed_when: true
+      register: snapper_create_result
       failed_when: false
+
+    - name: Show snapshot create result
+      ansible.builtin.debug:
+        msg: "snapper create: rc={{ snapper_create_result.rc | default('skipped') }} {{ snapper_create_result.stderr | default('') }}"
+      when: snapper_create_result is not skipped
 
     # ── Container security policy ───────────────────────────────────────
     - name: Ensure containers config directory exists

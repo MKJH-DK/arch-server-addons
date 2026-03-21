@@ -94,7 +94,34 @@
     owner: root
     group: root
 
-# Use CrowdSec's own default config — only add collections via cscli
+# ── Acquisition config (what logs to monitor) ────────────────────────
+# Arch Linux uses journald, not traditional log files.
+- name: Create acquis.d directory
+  ansible.builtin.file:
+    path: "{{ crowdsec_config_path }}/acquis.d"
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+
+- name: Deploy journald acquisition config
+  ansible.builtin.copy:
+    content: |
+      source: journalctl
+      journalctl_filter:
+        - "_SYSTEMD_UNIT=sshd.service"
+      labels:
+        type: syslog
+      ---
+      source: journalctl
+      journalctl_filter:
+        - "_SYSTEMD_UNIT=caddy.service"
+      labels:
+        type: syslog
+    dest: "{{ crowdsec_config_path }}/acquis.d/journald.yaml"
+    mode: '0644'
+    owner: root
+    group: root
 
 - name: Deploy Caddy integration configuration
   ansible.builtin.template:
