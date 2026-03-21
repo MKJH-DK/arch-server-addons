@@ -140,15 +140,23 @@
       when: aide_installed.rc != 0 and aide_aur_helper.rc | default(1) == 0
       failed_when: false
 
+    - name: Re-check if AIDE is now installed
+      ansible.builtin.command:
+        cmd: command -v aide
+      register: aide_available
+      changed_when: false
+      failed_when: false
+
     - name: Check if AIDE database exists
       ansible.builtin.stat:
         path: /var/lib/aide/aide.db.gz
       register: aide_db
+      when: aide_available.rc == 0
 
     - name: Initialize AIDE database (first deploy only)
       ansible.builtin.command:
         cmd: aide --init
-      when: not aide_db.stat.exists
+      when: aide_available.rc == 0 and not (aide_db.stat.exists | default(true))
       changed_when: true
 
     - name: Move new AIDE database into place
@@ -157,7 +165,7 @@
         dest: /var/lib/aide/aide.db.gz
         remote_src: true
         mode: '0600'
-      when: not aide_db.stat.exists
+      when: aide_available.rc == 0 and not (aide_db.stat.exists | default(true))
 
     - name: Create AIDE check service
       ansible.builtin.copy:
@@ -172,6 +180,7 @@
           IOSchedulingClass=idle
         dest: /etc/systemd/system/aide-check.service
         mode: '0644'
+      when: aide_available.rc == 0
 
     - name: Create AIDE check timer
       ansible.builtin.copy:
@@ -188,6 +197,7 @@
           WantedBy=timers.target
         dest: /etc/systemd/system/aide-check.timer
         mode: '0644'
+      when: aide_available.rc == 0
 
     - name: Enable AIDE check timer
       ansible.builtin.systemd:
@@ -195,6 +205,7 @@
         state: started
         enabled: true
         daemon_reload: true
+      when: aide_available.rc == 0
 
     # ── Journal vacuum ──────────────────────────────────────────────────
     - name: Vacuum systemd journal to 200M
