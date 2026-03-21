@@ -239,6 +239,14 @@
     mode: "0644"
   notify: reload caddy
 
+- name: Deploy Syncthing Caddy configuration
+  ansible.builtin.template:
+    src: syncthing.caddy.j2
+    dest: /etc/caddy/conf.d/syncthing.caddy
+    mode: "0644"
+  notify: reload caddy
+  when: syncthing_domain | default('') | length > 0
+
 # ── 10. Initial build ─────────────────────────────────────────────────────────
 
 - name: Run initial Quartz build for all sites

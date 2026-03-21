@@ -58,11 +58,19 @@
     ollama_domain: "{{ ollama_domain | default('') }}"
     ollama_url_prefix: "{{ ollama_url_prefix | default('/ollama') }}"
 
+    # Syncthing external access
+    syncthing_domain: "{{ syncthing_domain | default('') }}"
+
     # AI CLI tool variables
     claude_cli_enabled: "{{ claude_cli_enabled | default(false) }}"
     gemini_cli_enabled: "{{ gemini_cli_enabled | default(false) }}"
     shellgpt_enabled: "{{ shellgpt_enabled | default(false) }}"
     codex_enabled: "{{ codex_enabled | default(false) }}"
+
+    # Cloudflare Tunnel
+    cloudflare_tunnel_id: "{{ cloudflare_tunnel_id | default('') }}"
+    cloudflare_credentials_file: "{{ cloudflare_credentials_file | default('') }}"
+    cloudflare_extra_domains: "{{ cloudflare_extra_domains | default([]) }}"
 
   pre_tasks:
     - name: Ensure en_US.UTF-8 locale is present in locale.gen
@@ -107,6 +115,49 @@
         - /srv/git
         - /srv/backups
         - /etc/caddy/conf.d
+
+    # ── Basic auth credentials for protected services ──────────────────────
+    - name: Check if auth credentials already exist
+      ansible.builtin.stat:
+        path: /etc/caddy/.auth-credentials
+      register: auth_creds_file
+
+    - name: Generate auth password (first deploy only)
+      ansible.builtin.set_fact:
+        caddy_auth_password: "{{ lookup('password', '/dev/null length=24 chars=ascii_letters,digits') }}"
+      when: not auth_creds_file.stat.exists
+
+    - name: Generate bcrypt hash for auth password
+      ansible.builtin.command:
+        cmd: caddy hash-password --plaintext "{{ caddy_auth_password }}"
+      register: caddy_hash_result
+      changed_when: false
+      when: not auth_creds_file.stat.exists
+
+    - name: Store auth credentials
+      ansible.builtin.copy:
+        content: |
+          # Basic auth credentials for protected services
+          # Generated on first deploy — do not delete.
+          CADDY_AUTH_USER=admin
+          CADDY_AUTH_HASH={{ caddy_hash_result.stdout }}
+          CADDY_AUTH_PASSWORD={{ caddy_auth_password }}
+        dest: /etc/caddy/.auth-credentials
+        mode: '0600'
+        owner: root
+        group: root
+      when: not auth_creds_file.stat.exists
+
+    - name: Load existing auth credentials
+      ansible.builtin.command:
+        cmd: grep -E '^CADDY_AUTH_(USER|HASH)=' /etc/caddy/.auth-credentials
+      register: auth_creds_raw
+      changed_when: false
+
+    - name: Parse auth credentials
+      ansible.builtin.set_fact:
+        caddy_auth_user: "{{ auth_creds_raw.stdout | regex_search('CADDY_AUTH_USER=(.+)', '\\1') | first }}"
+        caddy_auth_hash: "{{ auth_creds_raw.stdout | regex_search('CADDY_AUTH_HASH=(.+)', '\\1') | first }}"
 
   roles:
     - role: ../../addons/obsidian-web
@@ -172,6 +223,24 @@
       retries: 3
       delay: 2
       until: caddy_admin.status == 200
+      failed_when: false
+
+    # ── Cloudflare Tunnel configuration ──────────────────────────────────
+    - name: Deploy Cloudflare Tunnel configuration
+      ansible.builtin.template:
+        src: ../templates/cloudflared-config.yml.j2
+        dest: /etc/cloudflared/config.yml
+        mode: '0600'
+        owner: root
+        group: root
+      when: cloudflare_tunnel_id | default('') | length > 0
+      notify: restart cloudflared
+
+    - name: Restart cloudflared
+      ansible.builtin.systemd:
+        name: cloudflared
+        state: restarted
+      when: cloudflare_tunnel_id | default('') | length > 0
       failed_when: false
 
     - name: Display addon deployment summary

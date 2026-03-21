@@ -1,0 +1,25 @@
+# Syncthing Admin UI — protected with basic auth
+# Only generated when syncthing_domain is set.
+{% if syncthing_domain %}
+http://{{ syncthing_domain }} {
+    basic_auth {
+        {{ caddy_auth_user }} {{ caddy_auth_hash }}
+    }
+
+    reverse_proxy 127.0.0.1:{{ obsidian_syncthing_port }}
+
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        -Server
+    }
+
+    log {
+        output file /var/log/caddy/syncthing.log {
+            roll_size 50mb
+            roll_keep 3
+        }
+        format json
+    }
+}
+{% endif %}

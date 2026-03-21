@@ -1,34 +1,24 @@
-# Ollama API reverse proxy
-# Only enabled when ollama_caddy_enabled=true
-
+# Ollama API reverse proxy — protected with basic auth
+# Only generated when ollama_domain is set.
 {% if ollama_domain %}
-{{ ollama_domain }} {
-  handle {{ ollama_url_prefix }}/* {
-    reverse_proxy {{ ollama_bind_address }}:{{ ollama_port }}
-  }
-
-  header {
-    X-Content-Type-Options "nosniff"
-    -Server
-  }
-
-  log {
-    output file /var/log/caddy/ollama.log {
-      roll_size 50mb
-      roll_keep 3
+http://{{ ollama_domain }} {
+    basic_auth {
+        {{ caddy_auth_user }} {{ caddy_auth_hash }}
     }
-    format json
-  }
-}
-{% else %}
-:80 {
-  handle {{ ollama_url_prefix }}/* {
-    reverse_proxy {{ ollama_bind_address }}:{{ ollama_port }}
-  }
 
-  header {
-    X-Content-Type-Options "nosniff"
-    -Server
-  }
+    reverse_proxy {{ ollama_bind_address }}:{{ ollama_port }}
+
+    header {
+        X-Content-Type-Options "nosniff"
+        -Server
+    }
+
+    log {
+        output file /var/log/caddy/ollama.log {
+            roll_size 50mb
+            roll_keep 3
+        }
+        format json
+    }
 }
 {% endif %}
