@@ -61,7 +61,7 @@ check_docker_services() {
 check_immich_api() {
     log "Checking Immich API..."
     
-    if curl -s --max-time "$HEALTH_CHECK_TIMEOUT" "$IMMICH_SERVER_URL/api/server-info/ping" | grep -q "pong"; then
+    if curl -s --max-time "$HEALTH_CHECK_TIMEOUT" "$IMMICH_SERVER_URL/api/server/ping" | grep -q "pong"; then
         log_success "Immich API: responsive"
         return 0
     else

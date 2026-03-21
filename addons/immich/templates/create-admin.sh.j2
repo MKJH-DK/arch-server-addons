@@ -35,7 +35,7 @@ log_error() {
 
 # Check if Immich is running
 check_immich_running() {
-    if ! curl -s "$IMMICH_URL/api/server-info/ping" > /dev/null; then
+    if ! curl -s "$IMMICH_URL/api/server/ping" > /dev/null; then
         log_error "Immich server is not running at $IMMICH_URL"
         log_info "Start Immich with: cd {{ immich_data_path }} && podman-compose up -d"
         exit 1

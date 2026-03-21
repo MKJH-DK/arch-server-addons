@@ -47,7 +47,7 @@ check_dependencies() {
         missing+=("tar")
     fi
     
-    if [[ ${#missing[@]} -gt 0 ]]; then
+    if [[ {{ '${#missing[@]}' }} -gt 0 ]]; then
         log_error "Missing dependencies: ${missing[*]}"
         exit 1
     fi
