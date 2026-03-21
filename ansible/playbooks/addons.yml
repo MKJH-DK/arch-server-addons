@@ -132,9 +132,9 @@
       failed_when: false
       when: aide_installed.rc != 0
 
-    - name: Install AIDE via AUR helper (as admin user)
+    - name: Install AIDE via AUR helper (as admin user, skip PGP check)
       ansible.builtin.shell: |
-        sudo -u admin {{ aide_aur_helper.stdout | trim }} -S --noconfirm --needed aide
+        sudo -u admin {{ aide_aur_helper.stdout | trim }} -S --noconfirm --needed --mflags --skippgpcheck aide
       when: aide_installed.rc != 0 and aide_aur_helper.rc | default(1) == 0
       register: aide_install_result
       failed_when: false
@@ -236,6 +236,15 @@
         path: /etc/snapper/configs/root
       register: snapper_root_config
 
+    - name: Remove orphaned .snapshots subvolume (exists without config)
+      ansible.builtin.shell: |
+        if btrfs subvolume show /.snapshots &>/dev/null && [ ! -f /etc/snapper/configs/root ]; then
+          btrfs subvolume delete /.snapshots
+        fi
+      when: not snapper_root_config.stat.exists
+      changed_when: true
+      failed_when: false
+
     - name: Create snapper config for root filesystem
       ansible.builtin.command:
         cmd: snapper -c root create-config /
@@ -247,7 +256,7 @@
     - name: Show snapper config result
       ansible.builtin.debug:
         msg: "snapper create-config: {{ snapper_config_result.stderr | default('OK') }}"
-      when: snapper_config_result is changed
+      when: snapper_config_result is defined and snapper_config_result is changed
 
     - name: Check for existing Btrfs snapshots
       ansible.builtin.shell: snapper -c root list 2>/dev/null | awk 'NR > 2 && NF { c++ } END { print c+0 }'
@@ -558,6 +567,23 @@
       ansible.builtin.debug:
         msg: "CrowdSec final status: {{ crowdsec_final.stdout | default('unknown') }}"
       when: crowdsec_enabled | bool and crowdsec_final is defined and crowdsec_final is not skipped
+
+    # ── Final cleanup: reset all failed units and show any remaining ──
+    - name: Final reset of all failed systemd units
+      ansible.builtin.command:
+        cmd: systemctl reset-failed
+      changed_when: true
+      failed_when: false
+
+    - name: Check for any remaining failed services
+      ansible.builtin.shell: systemctl --failed --no-legend --no-pager 2>/dev/null || true
+      register: final_failed_services
+      changed_when: false
+
+    - name: Show remaining failed services
+      ansible.builtin.debug:
+        msg: "Failed services after deploy: {{ final_failed_services.stdout | default('none') }}"
+      when: final_failed_services.stdout | default('') | length > 0
 
     - name: Display addon deployment summary
       ansible.builtin.debug:
