@@ -132,12 +132,25 @@
       failed_when: false
       when: aide_installed.rc != 0
 
+    - name: Grant admin temporary NOPASSWD sudo for AUR install
+      ansible.builtin.copy:
+        content: "admin ALL=(ALL) NOPASSWD: ALL\n"
+        dest: /etc/sudoers.d/99-aide-temp
+        mode: '0440'
+        validate: 'visudo -cf %s'
+      when: aide_installed.rc != 0 and aide_aur_helper.rc | default(1) == 0
+
     - name: Install AIDE via AUR helper (as admin user, skip PGP check)
       ansible.builtin.shell: |
         runuser -u admin -- {{ aide_aur_helper.stdout | trim }} -S --noconfirm --needed --skipreview --nopgpfetch --nosign --mflags="--skippgpcheck" aide
       when: aide_installed.rc != 0 and aide_aur_helper.rc | default(1) == 0
       register: aide_install_result
       failed_when: false
+
+    - name: Remove temporary NOPASSWD sudo
+      ansible.builtin.file:
+        path: /etc/sudoers.d/99-aide-temp
+        state: absent
 
     - name: Show AIDE install result
       ansible.builtin.debug:
@@ -223,6 +236,20 @@
         path: /etc/systemd/journald.conf
         regexp: '^#?SystemMaxUse='
         line: 'SystemMaxUse=200M'
+      register: journald_conf_changed
+      failed_when: false
+
+    - name: Restart journald to enforce size limit
+      ansible.builtin.systemd:
+        name: systemd-journald
+        state: restarted
+      when: journald_conf_changed.changed
+
+    - name: Re-vacuum journal after restart
+      ansible.builtin.command:
+        cmd: journalctl --vacuum-size=200M
+      when: journald_conf_changed.changed
+      changed_when: true
       failed_when: false
 
     # ── Btrfs snapshots via snapper ─────────────────────────────────────
@@ -607,18 +634,44 @@
         msg: "Failed services after deploy: {{ final_failed_services.stdout | default('none') }}"
       when: final_failed_services.stdout | default('') | length > 0
 
+    - name: Get list of failed unit names
+      ansible.builtin.shell: |
+        systemctl --failed --no-legend --no-pager 2>/dev/null | awk '{print $1}' || true
+      register: failed_unit_names
+      changed_when: false
+      when: final_failed_services.stdout | default('') | length > 0
+
+    - name: Try restarting each failed service
+      ansible.builtin.shell: |
+        systemctl reset-failed "{{ item }}" 2>/dev/null || true
+        systemctl restart "{{ item }}" 2>/dev/null || true
+      loop: "{{ failed_unit_names.stdout_lines | default([]) }}"
+      when: failed_unit_names.stdout_lines | default([]) | length > 0
+      failed_when: false
+      changed_when: true
+
     - name: Restart any failed Immich containers
       ansible.builtin.shell: |
         cd {{ immich_data_path }} && podman-compose restart 2>/dev/null || true
-      when: immich_enabled | bool and final_failed_services.stdout is search('immich|podman')
+      when: immich_enabled | bool and final_failed_services.stdout | default('') is search('immich|podman')
       failed_when: false
 
-    - name: Second reset of failed units after restarts
+    - name: Second reset of all failed units
       ansible.builtin.command:
         cmd: systemctl reset-failed
       changed_when: true
       failed_when: false
       when: final_failed_services.stdout | default('') | length > 0
+
+    - name: Final check of failed services
+      ansible.builtin.shell: systemctl --failed --no-legend --no-pager 2>/dev/null || true
+      register: truly_final_failed
+      changed_when: false
+
+    - name: Show final failed services
+      ansible.builtin.debug:
+        msg: "Services still failed after recovery: {{ truly_final_failed.stdout | default('none') }}"
+      when: truly_final_failed.stdout | default('') | length > 0
 
     - name: Display addon deployment summary
       ansible.builtin.debug:
