@@ -11,7 +11,7 @@ immich_data_path: "{{ immich_data_path | default('/srv/immich') }}"
 immich_docker_compose_path: "{{ immich_data_path }}/docker-compose.yml"
 immich_docker_env_path: "{{ immich_data_path }}/.env"
 immich_network_name: "immich-network"
-immich_version: "latest"
+immich_version: "v2.6.1"
 
 # Service ports (internal only)
 immich_server_port: 2283
