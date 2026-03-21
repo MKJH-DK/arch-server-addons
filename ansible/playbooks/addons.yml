@@ -133,12 +133,21 @@
       when: aide_installed.rc != 0
 
     - name: Install AIDE via AUR helper
-      ansible.builtin.command:
-        cmd: "{{ aide_aur_helper.stdout | trim }} -S --noconfirm --needed aide"
+      ansible.builtin.shell: |
+        HOME=/home/admin {{ aide_aur_helper.stdout | trim }} -S --noconfirm --needed aide
       become: true
       become_user: admin
+      environment:
+        HOME: /home/admin
+        USER: admin
       when: aide_installed.rc != 0 and aide_aur_helper.rc | default(1) == 0
+      register: aide_install_result
       failed_when: false
+
+    - name: Show AIDE install result
+      ansible.builtin.debug:
+        msg: "AIDE install: {{ 'OK' if aide_install_result.rc | default(1) == 0 else aide_install_result.stderr | default('failed') }}"
+      when: aide_install_result is defined and aide_install_result is not skipped
 
     - name: Re-check if AIDE is now installed
       ansible.builtin.command:
@@ -258,16 +267,6 @@
         path: /etc/containers
         state: directory
         mode: '0755'
-
-    - name: Harden containers.conf (no_new_privileges + drop ALL caps)
-      ansible.builtin.copy:
-        content: |
-          [containers]
-          no_new_privileges = true
-          default_capabilities = []
-        dest: /etc/containers/containers.conf
-        mode: '0644'
-        force: false
 
     - name: Harden container security policy (reject unsigned images by default)
       ansible.builtin.copy:
@@ -513,13 +512,45 @@
       failed_when: false
       when: crowdsec_enabled | bool
 
+    - name: Get CrowdSec failure reason
+      ansible.builtin.shell: journalctl -u crowdsec --no-pager -n 20 2>/dev/null || true
+      register: crowdsec_journal
+      changed_when: false
+      when: crowdsec_enabled | bool and crowdsec_status.stdout | default('') != 'active'
+
+    - name: Show CrowdSec failure reason
+      ansible.builtin.debug:
+        msg: "CrowdSec not running. Journal: {{ crowdsec_journal.stdout | default('no output') }}"
+      when: crowdsec_enabled | bool and crowdsec_status.stdout | default('') != 'active'
+
+    - name: Reset CrowdSec failed state
+      ansible.builtin.command:
+        cmd: systemctl reset-failed crowdsec
+      changed_when: true
+      failed_when: false
+      when: crowdsec_enabled | bool and crowdsec_status.stdout | default('') != 'active'
+
     - name: Restart CrowdSec if not running
       ansible.builtin.systemd:
         name: crowdsec
         state: restarted
         daemon_reload: true
       when: crowdsec_enabled | bool and crowdsec_status.stdout | default('') != 'active'
+      register: crowdsec_restart
       failed_when: false
+
+    - name: Verify CrowdSec is now running
+      ansible.builtin.command:
+        cmd: systemctl is-active crowdsec
+      register: crowdsec_final
+      changed_when: false
+      failed_when: false
+      when: crowdsec_enabled | bool and crowdsec_status.stdout | default('') != 'active'
+
+    - name: Show CrowdSec final status
+      ansible.builtin.debug:
+        msg: "CrowdSec final status: {{ crowdsec_final.stdout | default('unknown') }}"
+      when: crowdsec_enabled | bool and crowdsec_final is defined and crowdsec_final is not skipped
 
     - name: Display addon deployment summary
       ansible.builtin.debug:

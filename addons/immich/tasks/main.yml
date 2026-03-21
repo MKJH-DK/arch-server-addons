@@ -27,12 +27,14 @@
     state: started
     enabled: true
 
-- name: Configure Podman for hardened kernel (disable default sysctls)
+- name: Configure Podman for hardened kernel (disable default sysctls + hardening)
   ansible.builtin.copy:
     dest: /etc/containers/containers.conf
     content: |
       [containers]
       default_sysctls = []
+      no_new_privileges = true
+      default_capabilities = []
     mode: '0644'
     owner: root
     group: root
