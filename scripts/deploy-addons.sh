@@ -153,6 +153,15 @@ export LC_ALL="$UTF8_LOCALE"
 export LANG="$UTF8_LOCALE"
 log_info "Using locale: $UTF8_LOCALE"
 
+# Auto-detect Cloudflare Tunnel config if not set in addons.env
+if [[ -z "${CLOUDFLARE_TUNNEL_ID:-}" && -f /etc/cloudflared/config.yml ]]; then
+    CLOUDFLARE_TUNNEL_ID="$(grep '^tunnel:' /etc/cloudflared/config.yml | awk '{print $2}')"
+    CLOUDFLARE_CREDENTIALS_FILE="$(grep '^credentials-file:' /etc/cloudflared/config.yml | awk '{print $2}')"
+    if [[ -n "$CLOUDFLARE_TUNNEL_ID" ]]; then
+        log_info "Auto-detected Cloudflare Tunnel: $CLOUDFLARE_TUNNEL_ID"
+    fi
+fi
+
 # Run addon playbook
 log_info "Deploying addons..."
 cd "$PROJECT_DIR/ansible"
