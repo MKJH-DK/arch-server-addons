@@ -154,6 +154,54 @@
   changed_when: false
   failed_when: false
 
+- name: Test database authentication
+  ansible.builtin.shell: |
+    podman exec immich-database psql -U {{ immich_db_user }} -d {{ immich_db_name }} -c "SELECT 1" 2>&1
+  register: db_auth_test
+  changed_when: false
+  failed_when: false
+  when: db_ready.rc == 0
+
+- name: Reset database if authentication fails (password mismatch from previous deploys)
+  when: db_auth_test.rc | default(1) != 0
+  block:
+    - name: Stop all Immich containers for DB reset
+      ansible.builtin.shell: |
+        podman-compose -f {{ immich_docker_compose_path }} down 2>/dev/null || true
+      args:
+        chdir: "{{ immich_data_path }}"
+      failed_when: false
+
+    - name: Remove stale postgres data (password mismatch)
+      ansible.builtin.file:
+        path: "{{ immich_db_data_path }}"
+        state: absent
+
+    - name: Recreate postgres data directory
+      ansible.builtin.file:
+        path: "{{ immich_db_data_path }}"
+        state: directory
+        mode: '0755'
+        owner: root
+        group: root
+
+    - name: Restart Immich with fresh database
+      ansible.builtin.shell: |
+        systemctl reset-failed 2>/dev/null || true
+        podman-compose -f {{ immich_docker_compose_path }} up -d
+      args:
+        chdir: "{{ immich_data_path }}"
+
+    - name: Wait for fresh database to initialize
+      ansible.builtin.shell: |
+        for i in $(seq 1 30); do
+          podman exec immich-database pg_isready -U {{ immich_db_user }} -d {{ immich_db_name }} 2>/dev/null && exit 0
+          sleep 2
+        done
+        exit 1
+      changed_when: false
+      failed_when: false
+
 - name: Wait for Immich server to be ready
   ansible.builtin.uri:
     url: "http://localhost:{{ immich_server_port }}/api/server/ping"
