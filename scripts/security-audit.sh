@@ -463,12 +463,14 @@ fi
 
 section "NETWORK SECURITY"
 
-# DNS over TLS
-if grep -q "DNSOverTLS" /etc/systemd/resolved.conf 2>/dev/null; then
-    dot_val=$(grep "DNSOverTLS" /etc/systemd/resolved.conf | grep -v "^#" | head -1 | cut -d= -f2)
-    [[ "$dot_val" == "yes" || "$dot_val" == "opportunistic" ]] && check_pass "DNS-over-TLS: $dot_val" || check_warn "DNS-over-TLS: $dot_val"
+# DNS over TLS (check both main config and drop-in directory)
+dot_val=$(grep -rh "^DNSOverTLS" /etc/systemd/resolved.conf /etc/systemd/resolved.conf.d/ 2>/dev/null | tail -1 | cut -d= -f2 | tr -d '[:space:]')
+if [[ "$dot_val" == "yes" || "$dot_val" == "opportunistic" ]]; then
+    check_pass "DNS-over-TLS: $dot_val"
+elif [[ -n "$dot_val" ]]; then
+    check_warn "DNS-over-TLS: $dot_val"
 else
-    check_warn "DNS-over-TLS not configured in resolved.conf"
+    check_warn "DNS-over-TLS not configured"
 fi
 
 # IPv6 disabled check

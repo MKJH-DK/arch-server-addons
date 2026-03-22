@@ -398,7 +398,17 @@
           }
         dest: /etc/containers/policy.json
         mode: '0644'
-        force: false
+        force: true
+
+    # ── Secrets file permissions ──────────────────────────────────────────
+    - name: Harden secrets overlay file permissions
+      ansible.builtin.file:
+        path: "{{ item }}"
+        mode: '0600'
+      loop:
+        - /srv/vault/03-personal/04-secrets/addons.env
+      when: item is exists
+      failed_when: false
 
     # ── Basic auth credentials for protected services ──────────────────────
     - name: Check if auth credentials already exist
