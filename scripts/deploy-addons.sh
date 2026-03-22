@@ -65,6 +65,22 @@ fi
 log_info "Loading addon configuration..."
 source "$ADDON_CONFIG"
 
+# Load secrets overlay (credentials kept outside git)
+SECRETS_OVERLAY=""
+for secrets_candidate in \
+    "/srv/vault/03-personal/04-secrets/addons.env" \
+    "$HOME/vault/03-personal/04-secrets/addons.env" \
+    "/home/admin/vault/03-personal/04-secrets/addons.env"; do
+    if [[ -f "$secrets_candidate" ]]; then
+        SECRETS_OVERLAY="$secrets_candidate"
+        break
+    fi
+done
+if [[ -n "$SECRETS_OVERLAY" ]]; then
+    log_info "Loading secrets from: $SECRETS_OVERLAY"
+    source "$SECRETS_OVERLAY"
+fi
+
 # Validate required variables
 validate_config() {
     local errors=0
