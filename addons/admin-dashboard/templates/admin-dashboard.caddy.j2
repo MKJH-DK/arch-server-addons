@@ -12,14 +12,12 @@ http://{{ admin_dashboard_domain }} {
 	# Status API (no-auth internally, protected by outer basicauth)
 	reverse_proxy /api/* 127.0.0.1:9100
 
-{% if syncthing_domain | default('') | length > 0 %}
 	# Syncthing
 	handle_path /syncthing/* {
 		reverse_proxy 127.0.0.1:8384 {
 			header_up Host localhost
 		}
 	}
-{% endif %}
 
 {% if ollama_enabled | default(false) | bool %}
 	# Ollama
