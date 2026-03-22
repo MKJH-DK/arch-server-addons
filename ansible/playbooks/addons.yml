@@ -611,75 +611,32 @@
         msg: "CrowdSec final status: {{ crowdsec_final.stdout | default('unknown') }}"
       when: crowdsec_enabled | bool and crowdsec_final is defined and crowdsec_final is not skipped
 
-    # ── Final cleanup: reset all failed units and show any remaining ──
+    # ── Final cleanup: reset all failed units ──────────────────────────
+    # Podman container healthchecks create transient systemd units that
+    # accumulate as "failed" during container startup.  We removed the
+    # database healthcheck from docker-compose to stop new ones from
+    # appearing, but old ones may linger.  A single reset-failed is
+    # sufficient — do NOT try to restart transient units (that creates
+    # more failures).
     - name: Wait for services to settle after deploy
       ansible.builtin.pause:
-        seconds: 10
+        seconds: 15
 
-    - name: Reset failed podman healthcheck transient units
-      ansible.builtin.shell: |
-        systemctl --failed --no-legend --no-pager 2>/dev/null \
-          | awk '{print $1}' \
-          | while read unit; do
-              systemctl reset-failed "$unit" 2>/dev/null || true
-            done
-      changed_when: true
-      failed_when: false
-
-    - name: Final reset of all failed systemd units
+    - name: Reset all failed systemd units
       ansible.builtin.command:
         cmd: systemctl reset-failed
       changed_when: true
       failed_when: false
 
-    - name: Check for any remaining failed services
+    - name: Verify no failed services remain
       ansible.builtin.shell: systemctl --failed --no-legend --no-pager 2>/dev/null || true
       register: final_failed_services
       changed_when: false
 
-    - name: Show remaining failed services (detail)
+    - name: Show remaining failed services
       ansible.builtin.debug:
         msg: "Failed services after deploy: {{ final_failed_services.stdout | default('none') }}"
       when: final_failed_services.stdout | default('') | length > 0
-
-    - name: Get list of failed unit names
-      ansible.builtin.shell: |
-        systemctl --failed --no-legend --no-pager 2>/dev/null | awk '{print $1}' || true
-      register: failed_unit_names
-      changed_when: false
-      when: final_failed_services.stdout | default('') | length > 0
-
-    - name: Try restarting each failed service
-      ansible.builtin.shell: |
-        systemctl reset-failed "{{ item }}" 2>/dev/null || true
-        systemctl restart "{{ item }}" 2>/dev/null || true
-      loop: "{{ failed_unit_names.stdout_lines | default([]) }}"
-      when: failed_unit_names.stdout_lines | default([]) | length > 0
-      failed_when: false
-      changed_when: true
-
-    - name: Restart any failed Immich containers
-      ansible.builtin.shell: |
-        cd {{ immich_data_path }} && podman-compose restart 2>/dev/null || true
-      when: immich_enabled | bool and final_failed_services.stdout | default('') is search('immich|podman')
-      failed_when: false
-
-    - name: Second reset of all failed units
-      ansible.builtin.command:
-        cmd: systemctl reset-failed
-      changed_when: true
-      failed_when: false
-      when: final_failed_services.stdout | default('') | length > 0
-
-    - name: Final check of failed services
-      ansible.builtin.shell: systemctl --failed --no-legend --no-pager 2>/dev/null || true
-      register: truly_final_failed
-      changed_when: false
-
-    - name: Show final failed services
-      ansible.builtin.debug:
-        msg: "Services still failed after recovery: {{ truly_final_failed.stdout | default('none') }}"
-      when: truly_final_failed.stdout | default('') | length > 0
 
     - name: Display addon deployment summary
       ansible.builtin.debug:
