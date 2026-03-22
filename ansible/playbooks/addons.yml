@@ -14,11 +14,11 @@
     
     # Backblaze Backup variables
     backblaze_enabled: "{{ backblaze_enabled | default(false) }}"
-    backup_b2_bucket: "{{ backup_b2_bucket | default('') }}"
     backup_schedule: "{{ backup_schedule | default('daily') }}"
     backup_retention_days: "{{ backup_retention_days | default(30) }}"
-    backup_encrypt: "{{ backup_encrypt | default(true) }}"
-    backup_paths: "{{ backup_paths | default(['/srv', '/etc/caddy']) }}"
+    backup_b2_key_id: "{{ backup_b2_key_id | default('') }}"
+    backup_b2_app_key: "{{ backup_b2_app_key | default('') }}"
+    backup_jobs: "{{ backup_jobs | default([]) }}"
     
     # cgit variables
     cgit_enabled: "{{ cgit_enabled | default(false) }}"
@@ -667,7 +667,7 @@
           - "  - Vault path: {{ obsidian_vault_path }}"
           - "  - URL prefix: {{ obsidian_url_prefix }}"
           - "Backblaze Backup: {{ 'ENABLED' if backblaze_enabled | bool else 'disabled' }}"
-          - "  - Bucket: {{ backup_b2_bucket if backup_b2_bucket else 'Not configured' }}"
+          - "  - Jobs: {{ backup_jobs | length }}"
           - "  - Schedule: {{ backup_schedule }}"
           - "cgit: {{ 'ENABLED' if cgit_enabled | default(false) | bool else 'disabled' }}"
           - "  - Repo path: {{ cgit_repo_path }}"

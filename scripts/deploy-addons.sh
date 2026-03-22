@@ -184,11 +184,11 @@ ansible-playbook -i "$BASE_INVENTORY" \
     -e "obsidian_syncthing_user=${OBSIDIAN_SYNCTHING_USER:-admin}" \
     -e "obsidian_render_mode=${OBSIDIAN_RENDER_MODE:-quartz}" \
     -e "backblaze_enabled=${BACKBLAZE_ENABLED:-false}" \
-    -e "backup_b2_bucket=${BACKUP_B2_BUCKET:-}" \
     -e "backup_schedule=${BACKUP_SCHEDULE:-daily}" \
     -e "backup_retention_days=${BACKUP_RETENTION_DAYS:-30}" \
-    -e "backup_encrypt=${BACKUP_ENCRYPT:-true}" \
-    -e "backup_paths=${BACKUP_PATHS:-/srv /etc/caddy}" \
+    -e "backup_b2_key_id=${BACKUP_B2_KEY_ID:-}" \
+    -e "backup_b2_app_key=${BACKUP_B2_APP_KEY:-}" \
+    -e "{\"backup_jobs\": ${BACKUP_JOBS:-[]}}" \
     -e "cgit_enabled=${CGIT_ENABLED:-false}" \
     -e "cgit_title=${CGIT_TITLE:-My Git Repos}" \
     -e "cgit_repo_path=${CGIT_REPO_PATH:-/srv/git}" \

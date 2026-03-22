@@ -1,13 +1,12 @@
 ---
-# Backblaze B2 Backup Addon - Main Tasks
+# Backblaze B2 Backup Addon — multi-job sync
 
 - name: Install required packages
   ansible.builtin.pacman:
     name:
       - rclone
-      - snapper
+      - jq
     state: present
-  when: ansible_distribution == "Archlinux"
 
 - name: Create backup directories
   ansible.builtin.file:
@@ -22,6 +21,35 @@
     - "{{ backup_config_path }}"
     - "/root/.config/rclone"
 
+# ── Auto-configure rclone for B2 ────────────────────────────
+
+- name: Check if rclone B2 remote is configured
+  ansible.builtin.shell: rclone config show {{ rclone_config_name }} 2>/dev/null | grep -q 'type'
+  register: rclone_configured
+  changed_when: false
+  failed_when: false
+
+- name: Configure rclone for Backblaze B2
+  ansible.builtin.shell: |
+    rclone config create {{ rclone_config_name }} b2 \
+      account "{{ backup_b2_key_id }}" \
+      key "{{ backup_b2_app_key }}"
+  when: rclone_configured.rc != 0 and backup_b2_key_id | length > 0
+  no_log: true
+
+- name: Test rclone B2 connectivity
+  ansible.builtin.command:
+    cmd: "rclone lsd {{ rclone_config_name }}:"
+  register: rclone_test
+  changed_when: false
+  failed_when: false
+
+- name: Show rclone status
+  ansible.builtin.debug:
+    msg: "rclone B2: {{ 'Connected' if rclone_test.rc == 0 else 'NOT connected — check credentials' }}"
+
+# ── Deploy scripts ──────────────────────────────────────────
+
 - name: Deploy backup script
   ansible.builtin.template:
     src: b2-backup.sh.j2
@@ -35,90 +63,45 @@
     src: server-backup.service.j2
     dest: "/etc/systemd/system/{{ backup_service_name }}.service"
     mode: '0644'
-    owner: root
-    group: root
 
 - name: Deploy systemd timer
   ansible.builtin.template:
     src: server-backup.timer.j2
     dest: "/etc/systemd/system/{{ backup_timer_name }}"
     mode: '0644'
-    owner: root
-    group: root
 
-- name: Create logrotate configuration
+- name: Deploy logrotate configuration
   ansible.builtin.template:
     src: backup-logrotate.j2
     dest: "/etc/logrotate.d/server-backup"
     mode: '0644'
-    owner: root
-    group: root
-
-- name: Create backup configuration file
-  ansible.builtin.template:
-    src: backup-config.yml.j2
-    dest: "{{ backup_config_path }}/config.yml"
-    mode: '0600'
-    owner: root
-    group: root
-
-- name: Check if rclone is configured
-  ansible.builtin.stat:
-    path: "{{ rclone_config_file }}"
-  register: rclone_config
-
-- name: Display rclone configuration instructions
-  ansible.builtin.debug:
-    msg:
-      - "rclone is installed but not configured yet."
-      - "Run 'rclone config' to configure Backblaze B2:"
-      - "1. Choose 'New remote'"
-      - "2. Name it '{{ rclone_config_name }}'"
-      - "3. Choose 'b2' (Backblaze B2)"
-      - "4. Follow the prompts to enter your B2 credentials"
-      - "5. Test the connection with: rclone lsd {{ rclone_config_name }}:"
-      - ""
-      - "After configuration, the backup service will be ready to use."
-  when: not rclone_config.stat.exists
-
-- name: Validate rclone configuration (if exists)
-  ansible.builtin.command:
-    cmd: "rclone lsd {{ rclone_config_name }}:"
-  register: rclone_test
-  changed_when: false
-  failed_when: false
-  when: rclone_config.stat.exists
 
 - name: Enable and start backup timer
   ansible.builtin.systemd:
     name: "{{ backup_timer_name }}"
     state: started
     enabled: true
-  when: rclone_config.stat.exists and rclone_test.rc == 0
+    daemon_reload: true
 
-- name: Create backup verification script
+# ── Verify and restore scripts ──────────────────────────────
+
+- name: Deploy backup verify script
   ansible.builtin.template:
     src: backup-verify.sh.j2
     dest: "/usr/local/bin/backup-verify"
     mode: '0755'
-    owner: root
-    group: root
 
-- name: Create backup restore script
+- name: Deploy backup restore script
   ansible.builtin.template:
     src: backup-restore.sh.j2
     dest: "/usr/local/bin/backup-restore"
     mode: '0755'
-    owner: root
-    group: root
 
-- name: Deploy backup monitoring script
+- name: Deploy backup monitor script
   ansible.builtin.template:
     src: backup-monitor.sh.j2
     dest: "/usr/local/bin/backup-monitor"
     mode: '0755'
-    owner: root
-    group: root
 
 - name: Create cron job for backup monitoring
   ansible.builtin.cron:
@@ -129,21 +112,22 @@
     user: root
     cron_file: backup-monitor
 
+# ── Summary ─────────────────────────────────────────────────
+
 - name: Display backup setup information
   ansible.builtin.debug:
     msg:
-      - "Backblaze B2 backup addon configured"
-      - "Bucket: {{ backup_b2_bucket }}"
-      - "Schedule: {{ backup_schedule }}"
-      - "Retention: {{ backup_retention_days }} days"
-      - "Encryption: {{ backup_encrypt }}"
-      - "Paths: {{ backup_paths | join(', ') }}"
+      - "Backblaze B2 backup configured ({{ backup_jobs | length }} jobs)"
+{% for job in backup_jobs %}
+      - "  {{ job.name }}: {{ job.source }} → {{ job.bucket }}"
+{% endfor %}
+      - ""
+      - "Schedule: {{ backup_schedule }} ({{ backup_daily_schedule }})"
+      - "B2 connectivity: {{ 'OK' if rclone_test.rc == 0 else 'FAILED' }}"
       - ""
       - "Commands:"
       - "  Manual backup: {{ backup_script_path }}"
-      - "  Verify backup: backup-verify"
-      - "  Restore backup: backup-restore"
-      - "  Monitor status: backup-monitor"
-      - ""
-      - "Service: systemctl status {{ backup_timer_name }}"
-      - "Logs: journalctl -u {{ backup_service_name }}"
+      - "  Show status: {{ backup_script_path }} status"
+      - "  Verify: backup-verify"
+      - "  Restore: backup-restore --list"
+      - "  Monitor: backup-monitor status"

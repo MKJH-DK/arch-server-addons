@@ -1,13 +1,23 @@
 ---
 # Backblaze B2 Backup Addon Default Variables
 
-# Backup configuration
+# Master switch
 backup_enabled: "{{ backblaze_enabled | default(false) }}"
-backup_b2_bucket: "{{ backup_b2_bucket | default('') }}"
+
+# B2 credentials (required — set in addons.env)
+backup_b2_key_id: ""
+backup_b2_app_key: ""
+
+# Backup jobs — each syncs a local path to a B2 bucket
+# Set via addons.env as JSON: BACKUP_JOBS='[{"name":"photos","source":"/srv/immich","bucket":"my-bucket"}]'
+backup_jobs:
+  - name: "default"
+    source: "/srv"
+    bucket: "{{ backup_b2_bucket | default('') }}"
+
+# Schedule
 backup_schedule: "{{ backup_schedule | default('daily') }}"
 backup_retention_days: "{{ backup_retention_days | default(30) }}"
-backup_encrypt: "{{ backup_encrypt | default(true) }}"
-backup_paths: "{{ backup_paths | default(['/srv', '/etc/caddy']) }}"
 
 # Paths and directories
 backup_staging_path: "/srv/backups/staging"
@@ -17,7 +27,6 @@ backup_script_path: "/usr/local/bin/server-backup"
 
 # rclone configuration
 rclone_config_name: "backblaze"
-rclone_remote_name: "b2backup"
 rclone_config_file: "/root/.config/rclone/rclone.conf"
 
 # Systemd service configuration
@@ -30,16 +39,15 @@ backup_weekly_schedule: "Sun 02:00"
 backup_monthly_schedule: "*-*-01 02:00"
 
 # Backup options
-backup_compression: true
 backup_exclude_patterns:
   - "*.tmp"
   - "*.log"
   - "*.cache"
   - ".obsidian/cache"
-  - "node_modules/*"
-  - ".git/objects/*"
+  - "node_modules/"
+  - ".git/objects/"
+  - "__pycache__/"
 
 # Snapshots
 backup_use_snapshots: true
 backup_snapshot_prefix: "backup-"
-snapshot_config_path: "/etc/snapper/configs"
