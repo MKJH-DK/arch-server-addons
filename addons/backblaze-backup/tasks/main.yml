@@ -118,9 +118,7 @@
   ansible.builtin.debug:
     msg:
       - "Backblaze B2 backup configured ({{ backup_jobs | length }} jobs)"
-{% for job in backup_jobs %}
-      - "  {{ job.name }}: {{ job.source }} → {{ job.bucket }}"
-{% endfor %}
+      - "  Jobs: {{ backup_jobs | map(attribute='name') | join(', ') }}"
       - ""
       - "Schedule: {{ backup_schedule }} ({{ backup_daily_schedule }})"
       - "B2 connectivity: {{ 'OK' if rclone_test.rc == 0 else 'FAILED' }}"
