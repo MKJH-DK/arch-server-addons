@@ -93,8 +93,8 @@ validate_config() {
     fi
     
     if [[ "${BACKBLAZE_ENABLED:-false}" == "true" ]]; then
-        if [[ -z "${BACKUP_B2_BUCKET:-}" ]]; then
-            log_error "BACKUP_B2_BUCKET is required when BACKBLAZE_ENABLED=true"
+        if [[ -z "${BACKUP_JOBS:-}" ]]; then
+            log_error "BACKUP_JOBS is required when BACKBLAZE_ENABLED=true"
             ((errors++))
         fi
     fi
