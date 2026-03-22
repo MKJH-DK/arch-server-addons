@@ -33,8 +33,7 @@
     content: |
       [containers]
       default_sysctls = []
-      no_new_privileges = true
-      default_capabilities = []
+      default_capabilities = ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID", "NET_BIND_SERVICE"]
     mode: '0644'
     owner: root
     group: root
