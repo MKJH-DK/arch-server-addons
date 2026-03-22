@@ -575,6 +575,19 @@
         mode: '0600'
       failed_when: false
 
+    # ── Harden /etc/environment if it contains secrets ────────────────
+    - name: Check if /etc/environment contains secrets
+      ansible.builtin.shell: grep -qiE 'KEY=|TOKEN=|SECRET=|PASSWORD=' /etc/environment 2>/dev/null
+      register: env_has_secrets
+      changed_when: false
+      failed_when: false
+
+    - name: Restrict /etc/environment permissions (contains secrets)
+      ansible.builtin.file:
+        path: /etc/environment
+        mode: '0600'
+      when: env_has_secrets.rc == 0
+
     # ── Reset failed systemd units ──────────────────────────────────────
     # ── Update health-check script from base repo ─────────────────────
     - name: Find base server health-check source

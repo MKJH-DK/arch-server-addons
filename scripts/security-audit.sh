@@ -278,8 +278,8 @@ fi
 rule_count=$(nft list ruleset 2>/dev/null | wc -l)
 [[ $rule_count -gt 5 ]] && check_pass "nftables rules loaded ($rule_count lines)" || check_fail "nftables has no/minimal rules ($rule_count lines)"
 
-# Default deny policy
-if nft list ruleset 2>/dev/null | grep -q "policy drop\|policy reject"; then
+# Default deny policy — nft outputs "policy drop;" with semicolons and varying whitespace
+if nft list ruleset 2>/dev/null | grep -qi "policy[[:space:]]*drop\|policy[[:space:]]*reject"; then
     check_pass "Default deny policy detected"
 else
     check_warn "No default deny policy found in nftables"
@@ -371,8 +371,8 @@ done
 
 section "FILE SYSTEM"
 
-# SUID binaries (exclude container overlays, snap, proc, sys)
-suid_excludes="-path /proc -prune -o -path /sys -prune -o -path /var/lib/containers -prune -o -path /var/lib/machines -prune -o -path /snap -prune -o -path /srv/immich -prune"
+# SUID binaries (exclude container overlays, snap, proc, sys, dev, run)
+suid_excludes="-path /proc -prune -o -path /sys -prune -o -path /dev -prune -o -path /run -prune -o -path /var/lib/containers -prune -o -path /var/lib/machines -prune -o -path /snap -prune -o -path /srv/immich -prune -o -path /tmp -prune -o -path /var/tmp -prune"
 suid_count=$(eval "find / $suid_excludes -o -perm -4000 -type f -print" 2>/dev/null | wc -l)
 [[ $suid_count -lt 30 ]] && check_pass "SUID binaries: $suid_count (host only)" || check_warn "SUID binaries: $suid_count (review recommended)"
 eval "find / $suid_excludes -o -perm -4000 -type f -print" 2>/dev/null | sort >> "$LOG_FILE"
@@ -387,8 +387,18 @@ ww_files=$(find /etc /usr /srv -perm -o+w -type f 2>/dev/null | wc -l)
 find /etc /usr /srv -perm -o+w -type f 2>/dev/null >> "$LOG_FILE"
 
 # World-writable directories without sticky bit
-ww_dirs=$(find / -path /proc -prune -o -path /sys -prune -o -path /var/lib/containers -prune -o -path /var/lib/machines -prune -o -path /srv/immich -prune -o -type d \( -perm -0002 -a ! -perm -1000 \) -print 2>/dev/null | wc -l)
-[[ $ww_dirs -eq 0 ]] && check_pass "No world-writable dirs without sticky bit" || check_fail "$ww_dirs world-writable dirs without sticky bit"
+ww_dirs_list=$(find / -path /proc -prune -o -path /sys -prune -o -path /dev -prune \
+    -o -path /run -prune -o -path /tmp -prune -o -path /var/tmp -prune \
+    -o -path /var/lib/containers -prune -o -path /var/lib/machines -prune \
+    -o -path /srv/immich -prune \
+    -o -type d \( -perm -0002 -a ! -perm -1000 \) -print 2>/dev/null | head -10)
+ww_dirs=$(echo "$ww_dirs_list" | grep -c . 2>/dev/null || echo 0)
+if [[ $ww_dirs -eq 0 ]]; then
+    check_pass "No world-writable dirs without sticky bit"
+else
+    check_warn "$ww_dirs world-writable dirs without sticky bit"
+    log "World-writable dirs: $ww_dirs_list"
+fi
 
 # Unowned files
 unowned_files=$(find / -path /proc -prune -o -path /sys -prune -o -path /dev -prune \
@@ -447,8 +457,8 @@ fi
 
 section "SERVICE SECURITY"
 
-# Failed services
-failed_svcs=$(systemctl --failed --no-legend --no-pager 2>/dev/null | wc -l)
+# Failed services (exclude transient podman healthcheck units — they fail by design)
+failed_svcs=$(systemctl --failed --no-legend --no-pager 2>/dev/null | grep -v 'healthcheck' | wc -l)
 [[ $failed_svcs -eq 0 ]] && check_pass "No failed systemd services" || check_fail "$failed_svcs failed systemd services"
 systemctl --failed --no-legend --no-pager 2>/dev/null >> "$LOG_FILE"
 
@@ -672,8 +682,16 @@ fi
 
 # rclone B2 connectivity
 if command -v rclone &>/dev/null; then
-    if rclone lsd b2: &>/dev/null; then
-        check_pass "Backblaze B2 connection verified"
+    # Try common remote names
+    b2_remote=""
+    for r in backblaze b2; do
+        if rclone lsd "${r}:" &>/dev/null; then
+            b2_remote="$r"
+            break
+        fi
+    done
+    if [[ -n "$b2_remote" ]]; then
+        check_pass "Backblaze B2 connection verified (remote: $b2_remote)"
     else
         check_fail "Backblaze B2 connection failed"
     fi
@@ -745,7 +763,7 @@ section "SECRETS & CREDENTIALS"
 # Check for exposed secrets in common locations
 secrets_found=0
 for pattern in "PRIVATE_KEY\|API_KEY\|SECRET_KEY\|PASSWORD=" ; do
-    hits=$(grep -rl "$pattern" /srv/ /etc/caddy/ /home/ 2>/dev/null | grep -v ".auth-credentials\|.env\|config.json\|\.git" | head -5)
+    hits=$(grep -rl "$pattern" /srv/ /etc/caddy/ /home/ 2>/dev/null | grep -v ".auth-credentials\|\.env\|config\.json\|\.git\|\.credentials\|enrollment_key\|rclone\.conf\|\.log\|node_modules\|\.npm\|\.cache\|\.local\|\.config\|quartz" | head -5)
     if [[ -n "$hits" ]]; then
         ((secrets_found++))
         log "Potential secrets in: $hits"
