@@ -23,18 +23,12 @@
 
 # ── Auto-configure rclone for B2 ────────────────────────────
 
-- name: Check if rclone B2 remote is configured
-  ansible.builtin.shell: rclone config show {{ rclone_config_name }} 2>/dev/null | grep -q 'type'
-  register: rclone_configured
-  changed_when: false
-  failed_when: false
-
 - name: Configure rclone for Backblaze B2
   ansible.builtin.shell: |
     rclone config create {{ rclone_config_name }} b2 \
       account "{{ backup_b2_key_id }}" \
       key "{{ backup_b2_app_key }}"
-  when: rclone_configured.rc != 0 and backup_b2_key_id | length > 0
+  when: backup_b2_key_id | length > 0 and backup_b2_app_key | length > 0
   no_log: true
 
 - name: Test rclone B2 connectivity

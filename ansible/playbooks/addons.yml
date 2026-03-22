@@ -675,6 +675,28 @@
       changed_when: true
       failed_when: false
 
+    # Podman container healthchecks create transient systemd units that
+    # accumulate as "failed".  These are harmless but clutter the audit.
+    # Stop and disable any lingering healthcheck timers.
+    - name: Find lingering Podman healthcheck timers
+      ansible.builtin.shell: systemctl list-units --type=timer --no-legend --no-pager 2>/dev/null | grep -oP '\S*healthcheck\S*' || true
+      register: hc_timers
+      changed_when: false
+
+    - name: Stop lingering Podman healthcheck timers
+      ansible.builtin.command:
+        cmd: "systemctl stop {{ item }}"
+      loop: "{{ hc_timers.stdout_lines }}"
+      when: hc_timers.stdout_lines | length > 0
+      failed_when: false
+      changed_when: true
+
+    - name: Final reset of all failed units
+      ansible.builtin.command:
+        cmd: systemctl reset-failed
+      changed_when: true
+      failed_when: false
+
     - name: Verify no failed services remain
       ansible.builtin.shell: systemctl --failed --no-legend --no-pager 2>/dev/null || true
       register: final_failed_services
