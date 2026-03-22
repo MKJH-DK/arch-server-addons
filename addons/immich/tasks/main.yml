@@ -163,7 +163,7 @@
   when: db_ready.rc == 0
 
 - name: Reset database if authentication fails (password mismatch from previous deploys)
-  when: db_auth_test.rc | default(1) != 0
+  when: db_auth_test is not skipped and db_auth_test.rc | default(0) != 0
   block:
     - name: Stop all Immich containers for DB reset
       ansible.builtin.shell: |
@@ -215,7 +215,46 @@
 
 - name: Show Immich startup status
   ansible.builtin.debug:
-    msg: "Immich server: {{ 'READY' if immich_health.status | default(0) == 200 else 'NOT RESPONDING — check logs: podman-compose -f ' + immich_docker_compose_path + ' logs' }}"
+    msg: "Immich server: {{ 'READY' if immich_health.status | default(0) == 200 else 'NOT RESPONDING' }}"
+
+- name: Diagnose Immich failure
+  when: immich_health.status | default(0) != 200
+  block:
+    - name: Show running containers
+      ansible.builtin.shell: podman ps -a --format "{{ '{{' }}.Names{{ '}}' }} {{ '{{' }}.Status{{ '}}' }}" 2>/dev/null || true
+      register: podman_ps
+      changed_when: false
+
+    - name: Show container status
+      ansible.builtin.debug:
+        msg: "{{ podman_ps.stdout_lines | default(['no containers']) }}"
+
+    - name: Get immich-server logs
+      ansible.builtin.shell: podman logs immich-server --tail 30 2>&1 || true
+      register: server_logs
+      changed_when: false
+
+    - name: Show immich-server logs
+      ansible.builtin.debug:
+        msg: "{{ server_logs.stdout_lines | default(['no logs']) }}"
+
+    - name: Get immich-database logs
+      ansible.builtin.shell: podman logs immich-database --tail 15 2>&1 || true
+      register: db_logs
+      changed_when: false
+
+    - name: Show immich-database logs
+      ansible.builtin.debug:
+        msg: "{{ db_logs.stdout_lines | default(['no logs']) }}"
+
+    - name: Get immich-redis logs
+      ansible.builtin.shell: podman logs immich-redis --tail 10 2>&1 || true
+      register: redis_logs
+      changed_when: false
+
+    - name: Show immich-redis logs
+      ansible.builtin.debug:
+        msg: "{{ redis_logs.stdout_lines | default(['no logs']) }}"
 
 # ── 7. Deploy helper scripts ───────────────────────────────────────────────
 
