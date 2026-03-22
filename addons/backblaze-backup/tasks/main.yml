@@ -103,14 +103,40 @@
     dest: "/usr/local/bin/backup-monitor"
     mode: '0755'
 
-- name: Create cron job for backup monitoring
-  ansible.builtin.cron:
-    name: "Backup monitoring"
-    job: "/usr/local/bin/backup-monitor"
-    minute: "30"
-    hour: "*/6"
-    user: root
-    cron_file: backup-monitor
+- name: Deploy backup monitor systemd service
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/backup-monitor.service
+    mode: '0644'
+    content: |
+      [Unit]
+      Description=Backup monitoring check
+      After=network-online.target
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/backup-monitor
+
+- name: Deploy backup monitor systemd timer
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/backup-monitor.timer
+    mode: '0644'
+    content: |
+      [Unit]
+      Description=Run backup monitor every 6 hours
+
+      [Timer]
+      OnCalendar=*-*-* 00/6:30:00
+      Persistent=true
+
+      [Install]
+      WantedBy=timers.target
+
+- name: Enable backup monitor timer
+  ansible.builtin.systemd:
+    name: backup-monitor.timer
+    state: started
+    enabled: true
+    daemon_reload: true
 
 # ── Summary ─────────────────────────────────────────────────
 
