@@ -8,7 +8,7 @@ PORT=9100
 
 respond() {
     local body="$1"
-    local len=${#body}
+    local len={% raw %}${#body}{% endraw %}
     printf "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s" "$len" "$body"
 }
 
