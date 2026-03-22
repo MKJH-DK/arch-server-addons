@@ -46,7 +46,23 @@
       ExecStart=/usr/local/bin/admin-status-api
       Restart=on-failure
       RestartSec=5s
+
+      # Security sandboxing
       NoNewPrivileges=yes
+      PrivateTmp=yes
+      ProtectSystem=strict
+      ProtectHome=yes
+      ProtectKernelTunables=yes
+      ProtectKernelModules=yes
+      ProtectControlGroups=yes
+      RestrictNamespaces=yes
+      RestrictRealtime=yes
+      RestrictSUIDSGID=yes
+      LockPersonality=yes
+      MemoryDenyWriteExecute=yes
+      SystemCallArchitectures=native
+      CapabilityBoundingSet=
+      AmbientCapabilities=
 
       [Install]
       WantedBy=multi-user.target

@@ -21,6 +21,14 @@ NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=read-only
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
 ReadWritePaths={{ mcp_server_data_path }} {{ mcp_server_log_path }} /tmp
 {% if mcp_tool_knowledge_feed_enabled | bool %}
 ReadOnlyPaths={{ mcp_tool_knowledge_feed_path }}

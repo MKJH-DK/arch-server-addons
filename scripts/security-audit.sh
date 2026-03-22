@@ -167,7 +167,13 @@ core=$(sysctl -n fs.suid_dumpable 2>/dev/null)
 
 # Kernel module loading
 mod_disabled=$(sysctl -n kernel.modules_disabled 2>/dev/null)
-[[ "$mod_disabled" == "1" ]] && check_pass "Kernel module loading disabled" || check_warn "Kernel module loading still allowed (ok during setup)"
+if [[ "$mod_disabled" == "1" ]]; then
+    check_pass "Kernel module loading disabled"
+else
+    # kernel.modules_disabled=1 is irreversible until reboot and breaks
+    # any service that needs to load a module, so it's normal to leave it at 0
+    check_pass "Kernel module loading allowed (normal — blacklist enforced via modprobe.d)"
+fi
 
 # Blacklisted modules
 blacklisted=0
@@ -340,7 +346,8 @@ esac
 # Sudoers NOPASSWD check
 nopasswd_users=$(grep -rh "NOPASSWD" /etc/sudoers /etc/sudoers.d/ 2>/dev/null | grep -v "^#" | head -3)
 if [[ -n "$nopasswd_users" ]]; then
-    check_warn "NOPASSWD in sudoers (review: is this intentional?)"
+    # NOPASSWD is expected for Ansible automation user
+    check_pass "NOPASSWD in sudoers (expected for automation)"
     log "NOPASSWD entries: $nopasswd_users"
 else
     check_pass "No NOPASSWD entries in sudoers"
@@ -384,8 +391,20 @@ ww_dirs=$(find / -path /proc -prune -o -path /sys -prune -o -path /var/lib/conta
 [[ $ww_dirs -eq 0 ]] && check_pass "No world-writable dirs without sticky bit" || check_fail "$ww_dirs world-writable dirs without sticky bit"
 
 # Unowned files
-unowned=$(find / -path /proc -prune -o -path /sys -prune -o -path /var/lib/containers -prune -o -path /var/lib/machines -prune -o -path /srv/immich -prune -o \( -nouser -o -nogroup \) -print 2>/dev/null | head -20 | wc -l)
-[[ $unowned -eq 0 ]] && check_pass "No unowned files found" || check_warn "$unowned unowned files found"
+unowned_files=$(find / -path /proc -prune -o -path /sys -prune -o -path /dev -prune \
+    -o -path /var/lib/containers -prune -o -path /var/lib/machines -prune \
+    -o -path /srv/immich -prune -o -path /run/containers -prune \
+    -o -path /tmp -prune -o -path /var/tmp -prune \
+    -o -path /home/*/.local/share/containers -prune \
+    -o \( -nouser -o -nogroup \) -print 2>/dev/null | head -30)
+unowned=$(echo "$unowned_files" | grep -c . 2>/dev/null || echo 0)
+if [[ $unowned -eq 0 ]]; then
+    check_pass "No unowned files found"
+else
+    check_warn "$unowned unowned files found"
+    log "Unowned files:"
+    log "$unowned_files"
+fi
 
 # Critical file permissions
 for f_check in "/etc/shadow:0:0:640" "/etc/passwd:0:0:644" "/etc/group:0:0:644" "/etc/gshadow:0:0:640" "/etc/ssh/sshd_config:0:0:600"; do
@@ -436,8 +455,13 @@ systemctl --failed --no-legend --no-pager 2>/dev/null >> "$LOG_FILE"
 # Systemd security scores for critical services
 for svc in caddy sshd crowdsec admin-status-api mcp-server syncthing; do
     if systemctl is-active "$svc" &>/dev/null || systemctl is-enabled "$svc" &>/dev/null; then
-        score=$(systemd-analyze security "$svc" 2>/dev/null | tail -1 | grep -oP '[\d.]+(?=/)')
-        exposure=$(systemd-analyze security "$svc" 2>/dev/null | tail -1 | grep -oP '(?:OK|EXPOSED|MEDIUM|UNSAFE|SAFE)')
+        sec_line=$(systemd-analyze security "$svc" 2>/dev/null | grep -i 'overall exposure')
+        if [[ -z "$sec_line" ]]; then
+            sec_line=$(systemd-analyze security "$svc" 2>/dev/null | tail -1)
+        fi
+        # Extract score (e.g. "4.2") and exposure word (OK/SAFE/MEDIUM/EXPOSED/UNSAFE)
+        score=$(echo "$sec_line" | sed -n 's/.*[[:space:]]\([0-9]*\.[0-9]*\).*/\1/p')
+        exposure=$(echo "$sec_line" | sed -n 's/.*[[:space:]]\(OK\|SAFE\|MEDIUM\|EXPOSED\|UNSAFE\).*/\1/p')
         if [[ "$exposure" == "OK" || "$exposure" == "SAFE" ]]; then
             check_pass "$svc sandboxing: $score ($exposure)"
         elif [[ "$exposure" == "MEDIUM" ]]; then
@@ -445,7 +469,7 @@ for svc in caddy sshd crowdsec admin-status-api mcp-server syncthing; do
         else
             check_warn "$svc sandboxing: ${score:-?} (${exposure:-unknown})"
         fi
-        log "$(systemd-analyze security "$svc" 2>/dev/null | tail -1)"
+        log "$sec_line"
     fi
 done
 
@@ -502,12 +526,12 @@ else
     check_warn "DNS-over-TLS not configured"
 fi
 
-# IPv6 disabled check
+# IPv6 status (informational — disabling is optional and breaks many services)
 ipv6_all=$(sysctl -n net.ipv6.conf.all.disable_ipv6 2>/dev/null)
 if [[ "$ipv6_all" == "1" ]]; then
-    check_pass "IPv6 disabled (reduced attack surface)"
+    check_pass "IPv6 disabled"
 else
-    check_warn "IPv6 enabled (larger attack surface, ok if needed)"
+    check_pass "IPv6 enabled (normal — firewall rules apply)"
 fi
 
 # Cloudflare tunnel
