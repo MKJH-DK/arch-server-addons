@@ -118,11 +118,18 @@ for candidate in \
     fi
 done
 
+# Auto-clone arch-server if not found
 if [[ -z "$BASE_INVENTORY" ]]; then
-    log_error "Base Ansible inventory not found"
-    log_info "Searched relative to: $SCRIPT_PARENT"
-    log_info "Ensure arch-server is cloned next to arch-server-addons"
-    exit 1
+    log_info "arch-server not found — cloning from GitHub..."
+    CLONE_DIR="$SCRIPT_PARENT/arch-server"
+    if git clone https://github.com/MKJH-DK/arch-server.git "$CLONE_DIR" 2>/dev/null; then
+        BASE_INVENTORY="$CLONE_DIR/src/ansible/inventory/hosts.yml"
+        log_success "Cloned arch-server to $CLONE_DIR"
+    else
+        log_error "Failed to clone arch-server"
+        log_info "Ensure arch-server is cloned next to arch-server-addons"
+        exit 1
+    fi
 fi
 log_info "Using base inventory: $BASE_INVENTORY"
 
