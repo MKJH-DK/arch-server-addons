@@ -253,10 +253,18 @@ failed_ssh=$(echo "$failed_ssh" | tr -d '[:space:]')
 
 section "FIREWALL"
 
-if systemctl is-active nftables &>/dev/null; then
+# nftables is a oneshot service — it loads rules and exits.
+# "inactive (dead)" with exit code 0 is normal.
+nft_enabled=$(systemctl is-enabled nftables 2>/dev/null)
+nft_result=$(systemctl show nftables -p ExecMainStatus --value 2>/dev/null)
+if [[ "$nft_enabled" == "enabled" && "$nft_result" == "0" ]]; then
+    check_pass "nftables service enabled (oneshot, exit 0)"
+elif systemctl is-active nftables &>/dev/null; then
     check_pass "nftables service active"
+elif [[ "$nft_enabled" == "enabled" ]]; then
+    check_warn "nftables enabled but last run failed (exit $nft_result)"
 else
-    check_fail "nftables service not running"
+    check_fail "nftables not enabled"
 fi
 
 rule_count=$(nft list ruleset 2>/dev/null | wc -l)
