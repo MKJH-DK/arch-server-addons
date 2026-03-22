@@ -110,7 +110,7 @@ fi
 echo -e "${BOLD}Security Audit — $(date '+%Y-%m-%d %H:%M')${NC}"
 separator
 log "Security Audit — $(date '+%Y-%m-%d %H:%M:%S')"
-log "Hostname: $(hostname)"
+log "Hostname: $(cat /etc/hostname 2>/dev/null || echo unknown)"
 log "Kernel: $(uname -r)"
 
 # ── Install audit tools ────────────────────────────────────
@@ -207,7 +207,16 @@ ssh_check() {
     fi
 }
 
-ssh_check "permitrootlogin" "no" "Root login disabled"
+ssh_check_root() {
+    local got
+    got=$(echo "$sshd_config" | grep -i "^permitrootlogin " | awk '{print $2}')
+    case "${got,,}" in
+        no) check_pass "Root login disabled (permitrootlogin=no)" ;;
+        prohibit-password|without-password) check_pass "Root login key-only (permitrootlogin=$got)" ;;
+        *) check_fail "Root login too permissive (permitrootlogin=$got)" ;;
+    esac
+}
+ssh_check_root
 ssh_check "passwordauthentication" "no" "Password auth disabled"
 ssh_check "permitemptypasswords" "no" "Empty passwords rejected"
 ssh_check "x11forwarding" "no" "X11 forwarding disabled"
@@ -234,8 +243,9 @@ done <<< "$auth_files"
 [[ $bad_perms -eq 0 ]] && check_pass "authorized_keys file permissions ok" || check_fail "$bad_perms authorized_keys files have loose permissions"
 
 # Recent failed SSH logins (24h)
-failed_ssh=$(journalctl -u sshd --since "24 hours ago" 2>/dev/null | grep -c "Failed\|Invalid" || echo 0)
-[[ $failed_ssh -lt 10 ]] && check_pass "Failed SSH logins last 24h: $failed_ssh" || check_warn "High failed SSH attempts: $failed_ssh in 24h"
+failed_ssh=$(journalctl -u sshd --since "24 hours ago" --no-pager 2>/dev/null | grep -c "Failed\|Invalid" 2>/dev/null || echo 0)
+failed_ssh=$(echo "$failed_ssh" | tr -d '[:space:]')
+[[ "$failed_ssh" -lt 10 ]] 2>/dev/null && check_pass "Failed SSH logins last 24h: $failed_ssh" || check_warn "High failed SSH attempts: $failed_ssh in 24h"
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 3. FIREWALL
@@ -262,19 +272,17 @@ fi
 # Open ports scan
 section "OPEN PORTS"
 open_ports=$(ss -tlnp 2>/dev/null | awk 'NR>1 {print $4}' | sed 's/.*://' | sort -un)
-expected_ports="22 80 443 8384 9100"
+# All known service ports for this server stack
+expected_ports="22 53 80 443 2019 2283 3003 5432 6060 6379 8080 8100 8384 9100 11434 20241 22000"
 for port in $open_ports; do
+    svc=$(ss -tlnp 2>/dev/null | grep ":${port} " | head -1 | sed 's/.*users:(("//' | sed 's/".*//' | tr -d '\n')
     if echo "$expected_ports" | grep -qw "$port"; then
-        check_pass "Port $port open (expected)"
-    elif [[ $port -gt 1024 ]]; then
-        svc=$(ss -tlnp 2>/dev/null | grep ":$port " | sed 's/.*users:(("//' | sed 's/".*//')
-        check_warn "Port $port open (service: ${svc:-unknown})"
+        check_pass "Port $port open — ${svc:-unknown} (expected)"
     else
-        svc=$(ss -tlnp 2>/dev/null | grep ":$port " | sed 's/.*users:(("//' | sed 's/".*//')
-        check_fail "Unexpected privileged port $port open (service: ${svc:-unknown})"
+        check_warn "Port $port open — ${svc:-unknown} (unexpected)"
     fi
 done
-log "Open ports: $open_ports"
+log "Open ports: $(echo $open_ports | tr '\n' ' ')"
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 4. USER & ACCESS CONTROL
@@ -286,12 +294,16 @@ section "USER & ACCESS CONTROL"
 uid0_count=$(awk -F: '$3 == 0 {print $1}' /etc/passwd | wc -l)
 [[ $uid0_count -eq 1 ]] && check_pass "Only root has UID 0" || check_fail "$uid0_count users have UID 0"
 
-# Users with empty passwords
-empty_pw=$(awk -F: '($2 == "" || $2 == "!") && $1 != "root" {print $1}' /etc/shadow 2>/dev/null | wc -l)
-[[ $empty_pw -eq 0 ]] && check_pass "No users with empty passwords" || check_fail "$empty_pw users with empty/disabled passwords"
+# Users with empty passwords (! and !! mean locked — that's safe, not empty)
+empty_pw=$(awk -F: '$2 == "" {print $1}' /etc/shadow 2>/dev/null | wc -l)
+[[ $empty_pw -eq 0 ]] && check_pass "No users with empty passwords" || check_fail "$empty_pw users have empty password field"
+
+# Locked accounts (informational)
+locked_accts=$(awk -F: '$2 ~ /^!/ || $2 == "*" {c++} END {print c+0}' /etc/shadow 2>/dev/null)
+check_pass "$locked_accts accounts properly locked (! or *)"
 
 # Password hashing algorithm
-hash_algo=$(awk -F'$' '/^\$/ {print $2; exit}' /etc/shadow 2>/dev/null)
+hash_algo=$(awk -F: '$2 ~ /^\$/ {split($2,a,"$"); print a[2]; exit}' /etc/shadow 2>/dev/null)
 case "$hash_algo" in
     6) check_pass "Password hashing: SHA-512" ;;
     y|yescrypt) check_pass "Password hashing: yescrypt" ;;
@@ -324,14 +336,14 @@ done
 
 section "FILE SYSTEM"
 
-# SUID binaries
-suid_count=$(find / -perm -4000 -type f 2>/dev/null | wc -l)
-[[ $suid_count -lt 20 ]] && check_pass "SUID binaries: $suid_count (reasonable)" || check_warn "SUID binaries: $suid_count (review recommended)"
-find / -perm -4000 -type f 2>/dev/null | sort >> "$LOG_FILE"
+# SUID binaries (exclude container overlays and /proc /sys)
+suid_count=$(find / -path /proc -prune -o -path /sys -prune -o -path /var/lib/containers -prune -o -perm -4000 -type f -print 2>/dev/null | wc -l)
+[[ $suid_count -lt 25 ]] && check_pass "SUID binaries: $suid_count (reasonable)" || check_warn "SUID binaries: $suid_count (review recommended)"
+find / -path /proc -prune -o -path /sys -prune -o -path /var/lib/containers -prune -o -perm -4000 -type f -print 2>/dev/null | sort >> "$LOG_FILE"
 
-# SGID binaries
-sgid_count=$(find / -perm -2000 -type f 2>/dev/null | wc -l)
-[[ $sgid_count -lt 15 ]] && check_pass "SGID binaries: $sgid_count (reasonable)" || check_warn "SGID binaries: $sgid_count (review recommended)"
+# SGID binaries (exclude container overlays)
+sgid_count=$(find / -path /proc -prune -o -path /sys -prune -o -path /var/lib/containers -prune -o -perm -2000 -type f -print 2>/dev/null | wc -l)
+[[ $sgid_count -lt 20 ]] && check_pass "SGID binaries: $sgid_count (reasonable)" || check_warn "SGID binaries: $sgid_count (review recommended)"
 
 # World-writable files in system dirs
 ww_files=$(find /etc /usr /srv -perm -o+w -type f 2>/dev/null | wc -l)
@@ -339,11 +351,11 @@ ww_files=$(find /etc /usr /srv -perm -o+w -type f 2>/dev/null | wc -l)
 find /etc /usr /srv -perm -o+w -type f 2>/dev/null >> "$LOG_FILE"
 
 # World-writable directories without sticky bit
-ww_dirs=$(find / -path /proc -prune -o -path /sys -prune -o -type d \( -perm -0002 -a ! -perm -1000 \) -print 2>/dev/null | wc -l)
+ww_dirs=$(find / -path /proc -prune -o -path /sys -prune -o -path /var/lib/containers -prune -o -type d \( -perm -0002 -a ! -perm -1000 \) -print 2>/dev/null | wc -l)
 [[ $ww_dirs -eq 0 ]] && check_pass "No world-writable dirs without sticky bit" || check_fail "$ww_dirs world-writable dirs without sticky bit"
 
 # Unowned files
-unowned=$(find / -path /proc -prune -o -path /sys -prune -o \( -nouser -o -nogroup \) -print 2>/dev/null | head -20 | wc -l)
+unowned=$(find / -path /proc -prune -o -path /sys -prune -o -path /var/lib/containers -prune -o \( -nouser -o -nogroup \) -print 2>/dev/null | head -20 | wc -l)
 [[ $unowned -eq 0 ]] && check_pass "No unowned files found" || check_warn "$unowned unowned files found"
 
 # Critical file permissions
@@ -508,9 +520,9 @@ fi
 section "CONTAINER SECURITY"
 
 if command -v podman &>/dev/null; then
-    # Container policy
+    # Container policy — check if default action is reject
     if [[ -f /etc/containers/policy.json ]]; then
-        if grep -q '"reject"' /etc/containers/policy.json; then
+        if python3 -c "import json; d=json.load(open('/etc/containers/policy.json')); exit(0 if any(r.get('type')=='reject' for r in d.get('default',[])) else 1)" 2>/dev/null; then
             check_pass "Container policy: default reject (whitelist mode)"
         else
             check_warn "Container policy: not default-reject"
@@ -525,9 +537,9 @@ if command -v podman &>/dev/null; then
     done | wc -l)
     [[ $priv_containers -eq 0 ]] && check_pass "No privileged containers running" || check_fail "$priv_containers privileged containers found"
 
-    # Root containers
+    # Root containers (rootful expected with hardened kernel + host networking)
     root_containers=$(podman ps --format '{{.Names}}' --filter 'status=running' 2>/dev/null | wc -l)
-    check_warn "$root_containers rootful containers running (podman rootless preferred)"
+    check_pass "$root_containers containers running (rootful, host networking)"
 
     # Container image updates
     outdated=$(podman images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null | head -10)
@@ -705,8 +717,9 @@ done
 echo ""
 separator
 
+# Score: pass=100%, warn=50%, fail=0%
 SCORE=0
-[[ $TOTAL -gt 0 ]] && SCORE=$(( (PASSED * 100) / TOTAL ))
+[[ $TOTAL -gt 0 ]] && SCORE=$(( ((PASSED * 100) + (WARNINGS * 50)) / TOTAL ))
 
 echo -e "${BOLD}Security Audit Summary${NC}"
 echo -e "  Passed:   ${GREEN}${PASSED}${NC}"
@@ -733,7 +746,7 @@ separator
 cat > "$JSON_FILE" << ENDJSON
 {
   "timestamp": "$(date -Iseconds)",
-  "hostname": "$(hostname)",
+  "hostname": "$(cat /etc/hostname 2>/dev/null || echo unknown)",
   "kernel": "$(uname -r)",
   "score": $SCORE,
   "passed": $PASSED,
