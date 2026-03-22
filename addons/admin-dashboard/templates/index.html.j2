@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Server Admin</title>
+  <link rel="stylesheet" href="/ethereal.css">
+  <style>
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+    .card { position: relative; }
+    .card a { text-decoration: none; color: inherit; display: block; }
+    .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .card-header h3 { margin: 0; }
+    .status-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .status-dot.up { background: var(--success); box-shadow: 0 0 6px var(--success); }
+    .status-dot.down { background: var(--danger); box-shadow: 0 0 6px var(--danger); }
+    .status-dot.unknown { background: var(--text-muted); }
+    .card-desc { color: var(--text-muted); font-size: 0.875rem; margin: 0; }
+    .card-url { color: var(--accent); font-size: 0.75rem; font-family: monospace; margin-top: 8px; display: block; }
+    .stats-bar { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 24px; }
+    .stat { text-align: center; }
+    .stat-value { font-size: 1.75rem; font-weight: 800; }
+    .stat-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .section-title { font-size: 0.875rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; margin: 24px 0 12px; }
+    header { padding: 32px 0 0; }
+    header h1 { margin-bottom: 4px; }
+    header p { color: var(--text-muted); margin: 0; }
+    .backup-info { font-size: 0.8rem; color: var(--text-muted); margin-top: 8px; }
+    .theme-toggle { cursor: pointer; background: var(--well); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 10px; color: var(--text-muted); font-size: 0.8rem; }
+    .top-bar { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; }
+  </style>
+</head>
+<body>
+  <div class="container" style="max-width: 960px; padding: 0 24px;">
+    <div class="top-bar">
+      <div></div>
+      <button class="theme-toggle" onclick="toggleTheme()">theme</button>
+    </div>
+
+    <header>
+      <h1>Server Admin</h1>
+      <p>{{ ansible_hostname | default('arch-server') }}</p>
+    </header>
+
+    <div class="stats-bar" id="stats">
+      <div class="stat"><div class="stat-value" id="s-load">—</div><div class="stat-label">Load</div></div>
+      <div class="stat"><div class="stat-value" id="s-mem">—</div><div class="stat-label">Memory</div></div>
+      <div class="stat"><div class="stat-value" id="s-disk">—</div><div class="stat-label">Disk</div></div>
+      <div class="stat"><div class="stat-value" id="s-uptime">—</div><div class="stat-label">Uptime</div></div>
+      <div class="stat"><div class="stat-value" id="s-failed">—</div><div class="stat-label">Failed</div></div>
+    </div>
+
+    <div class="section-title">Services</div>
+    <div class="grid">
+
+{% if immich_enabled | default(false) | bool %}
+      <div class="card" id="svc-immich">
+        <a href="https://{{ immich_domain }}" target="_blank">
+          <div class="card-header">
+            <h3>Immich</h3>
+            <div class="status-dot unknown" data-svc="immich"></div>
+          </div>
+          <p class="card-desc">Photo & video management</p>
+          <span class="card-url">{{ immich_domain }}</span>
+        </a>
+      </div>
+{% endif %}
+
+      <div class="card" id="svc-syncthing">
+        <a href="/syncthing/" target="_blank">
+          <div class="card-header">
+            <h3>Syncthing</h3>
+            <div class="status-dot unknown" data-svc="syncthing"></div>
+          </div>
+          <p class="card-desc">File synchronization</p>
+          <span class="card-url">{{ syncthing_domain | default('localhost:8384') }}</span>
+        </a>
+      </div>
+
+{% if ollama_enabled | default(false) | bool %}
+      <div class="card" id="svc-ollama">
+        <a href="/ollama/" target="_blank">
+          <div class="card-header">
+            <h3>Ollama</h3>
+            <div class="status-dot unknown" data-svc="ollama"></div>
+          </div>
+          <p class="card-desc">Local LLM inference</p>
+          <span class="card-url">{{ ollama_bind_address }}:{{ ollama_port }}</span>
+        </a>
+      </div>
+{% endif %}
+
+{% if mcp_server_enabled | default(false) | bool %}
+      <div class="card" id="svc-mcp">
+        <a href="/mcp/" target="_blank">
+          <div class="card-header">
+            <h3>MCP Server</h3>
+            <div class="status-dot unknown" data-svc="mcp"></div>
+          </div>
+          <p class="card-desc">Model Context Protocol tools</p>
+          <span class="card-url">{{ mcp_server_bind_address }}:{{ mcp_server_port }}</span>
+        </a>
+      </div>
+{% endif %}
+
+{% if crowdsec_enabled | default(false) | bool %}
+      <div class="card" id="svc-crowdsec">
+        <a href="/crowdsec/" target="_blank">
+          <div class="card-header">
+            <h3>CrowdSec</h3>
+            <div class="status-dot unknown" data-svc="crowdsec"></div>
+          </div>
+          <p class="card-desc">Intrusion detection</p>
+          <span class="card-url">localhost:{{ crowdsec_agent_port }}</span>
+        </a>
+      </div>
+{% endif %}
+
+{% if obsidian_enabled | default(false) | bool %}
+      <div class="card">
+        <a href="https://{{ obsidian_sites[0].domain | default('mkjh.dk') }}" target="_blank">
+          <div class="card-header">
+            <h3>Wiki</h3>
+            <div class="status-dot unknown" data-svc="caddy"></div>
+          </div>
+          <p class="card-desc">Quartz-published vault</p>
+          <span class="card-url">{{ obsidian_sites[0].domain | default('mkjh.dk') }}</span>
+        </a>
+      </div>
+{% endif %}
+
+    </div>
+
+    <div class="section-title">Infrastructure</div>
+    <div class="grid">
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Caddy</h3>
+          <div class="status-dot unknown" data-svc="caddy"></div>
+        </div>
+        <p class="card-desc">Web server & reverse proxy</p>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>SSH</h3>
+          <div class="status-dot unknown" data-svc="sshd"></div>
+        </div>
+        <p class="card-desc">Secure shell access</p>
+{% if cloudflare_ssh_domain | default('') | length > 0 %}
+        <span class="card-url">{{ cloudflare_ssh_domain }}</span>
+{% endif %}
+      </div>
+
+      <div class="card" id="backup-card">
+        <div class="card-header">
+          <h3>Backup</h3>
+          <div class="status-dot unknown" id="backup-dot"></div>
+        </div>
+        <p class="card-desc">Backblaze B2 sync</p>
+        <div class="backup-info" id="backup-info">Loading...</div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    const themes = ['dark', 'light', 'black'];
+    let ti = 0;
+    function toggleTheme() {
+      ti = (ti + 1) % themes.length;
+      document.documentElement.dataset.theme = themes[ti];
+      localStorage.setItem('theme', themes[ti]);
+    }
+    const saved = localStorage.getItem('theme');
+    if (saved) { document.documentElement.dataset.theme = saved; ti = themes.indexOf(saved); }
+
+    async function refresh() {
+      try {
+        const r = await fetch('/api/status');
+        const d = await r.json();
+
+        document.getElementById('s-load').textContent = d.load;
+        document.getElementById('s-mem').textContent = d.memory_pct + '%';
+        document.getElementById('s-disk').textContent = d.disk_pct + '%';
+        document.getElementById('s-uptime').textContent = d.uptime;
+        document.getElementById('s-failed').textContent = d.failed_services;
+
+        for (const [name, ok] of Object.entries(d.services || {})) {
+          document.querySelectorAll(`[data-svc="${name}"]`).forEach(el => {
+            el.className = 'status-dot ' + (ok ? 'up' : 'down');
+          });
+        }
+
+        const bi = document.getElementById('backup-info');
+        const bd = document.getElementById('backup-dot');
+        if (d.backup) {
+          const last = d.backup.last || 'never';
+          bi.textContent = `Last: ${last.replace(/^.*=/, '')} — ${d.backup.result}`;
+          bd.className = 'status-dot ' + (d.backup.timer === 'active' ? 'up' : 'down');
+        }
+      } catch (e) {
+        console.error('Status fetch failed:', e);
+      }
+    }
+
+    refresh();
+    setInterval(refresh, 15000);
+  </script>
+</body>
+</html>

@@ -159,6 +159,7 @@ echo "  CrowdSec: ${CROWDSEC_ENABLED:-false}"
 echo "  Ollama: ${OLLAMA_ENABLED:-false}"
 echo ""
 echo "  MCP Server: ${MCP_SERVER_ENABLED:-false}"
+echo "  Admin Dashboard: ${ADMIN_DASHBOARD_ENABLED:-false}"
 echo ""
 echo "  AI CLI Tools:"
 echo "    Claude Code: ${CLAUDE_CLI_ENABLED:-false}"
@@ -258,7 +259,9 @@ ansible-playbook -i "$BASE_INVENTORY" \
     -e "claude_cli_enabled=${CLAUDE_CLI_ENABLED:-false}" \
     -e "gemini_cli_enabled=${GEMINI_CLI_ENABLED:-false}" \
     -e "shellgpt_enabled=${SHELLGPT_ENABLED:-false}" \
-    -e "codex_enabled=${CODEX_ENABLED:-false}"
+    -e "codex_enabled=${CODEX_ENABLED:-false}" \
+    -e "admin_dashboard_enabled=${ADMIN_DASHBOARD_ENABLED:-false}" \
+    -e "admin_domain=${ADMIN_DOMAIN:-}"
 
 if [[ $? -eq 0 ]]; then
     log_success "Addon deployment completed successfully"
@@ -317,6 +320,13 @@ if [[ $? -eq 0 ]]; then
         echo "    - Transport: ${MCP_SERVER_TRANSPORT:-http}"
         echo "    - Client config: /srv/mcp/client-config.json"
         echo "    - Status: mcp-manage status"
+    fi
+
+    if [[ "${ADMIN_DASHBOARD_ENABLED:-false}" == "true" ]]; then
+        echo "  Admin Dashboard:"
+        echo "    - URL: https://${ADMIN_DOMAIN:-admin.mkjh.dk}"
+        echo "    - Auth: basic auth (credentials in /etc/caddy/.auth-credentials)"
+        echo "    - Status API: port 9100"
     fi
 
     # AI CLI Tools

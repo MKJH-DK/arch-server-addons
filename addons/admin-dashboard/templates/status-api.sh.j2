@@ -1,0 +1,71 @@
+#!/bin/bash
+# Admin Status API — lightweight JSON API for dashboard
+# Listens on port 9100, serves system status as JSON
+
+set -euo pipefail
+
+PORT=9100
+
+respond() {
+    local body="$1"
+    local len=${#body}
+    printf "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s" "$len" "$body"
+}
+
+handle_request() {
+    read -r method path _version || return
+
+    case "$path" in
+        /api/status)
+            local load mem_pct disk_pct uptime_str failed_count
+            load=$(awk '{print $1}' /proc/loadavg)
+            mem_pct=$(free | awk '/Mem:/ {printf "%.0f", $3/$2*100}')
+            disk_pct=$(df / | awk 'NR==2 {print $5}' | tr -d '%')
+            uptime_str=$(uptime -p 2>/dev/null | sed 's/up //' || echo "unknown")
+            failed_count=$(systemctl --failed --no-legend --no-pager 2>/dev/null | wc -l || echo 0)
+
+            local services='{'
+{% if immich_enabled | default(false) | bool %}
+            local immich_ok=$(curl -sf -m 2 "http://localhost:{{ immich_server_port | default(2283) }}/api/server/ping" >/dev/null 2>&1 && echo true || echo false)
+            services="$services\"immich\":$immich_ok,"
+{% endif %}
+{% if ollama_enabled | default(false) | bool %}
+            local ollama_ok=$(curl -sf -m 2 "http://{{ ollama_bind_address | default('127.0.0.1') }}:{{ ollama_port | default(11434) }}/api/version" >/dev/null 2>&1 && echo true || echo false)
+            services="$services\"ollama\":$ollama_ok,"
+{% endif %}
+{% if crowdsec_enabled | default(false) | bool %}
+            local crowdsec_ok=$(systemctl is-active crowdsec >/dev/null 2>&1 && echo true || echo false)
+            services="$services\"crowdsec\":$crowdsec_ok,"
+{% endif %}
+{% if mcp_server_enabled | default(false) | bool %}
+            local mcp_ok=$(curl -sf -m 2 "http://{{ mcp_server_bind_address | default('127.0.0.1') }}:{{ mcp_server_port | default(8100) }}/" >/dev/null 2>&1 && echo true || echo false)
+            services="$services\"mcp\":$mcp_ok,"
+{% endif %}
+            local syncthing_ok=$(curl -sf -m 2 "http://localhost:8384/rest/system/ping" >/dev/null 2>&1 && echo true || echo false)
+            services="$services\"syncthing\":$syncthing_ok,"
+            local caddy_ok=$(systemctl is-active caddy >/dev/null 2>&1 && echo true || echo false)
+            services="$services\"caddy\":$caddy_ok,"
+            local ssh_ok=$(systemctl is-active sshd >/dev/null 2>&1 && echo true || echo false)
+            services="$services\"sshd\":$ssh_ok"
+            services="$services}"
+
+            local backup_last=$(systemctl show server-backup -p ExecMainStartTimestamp --value 2>/dev/null || echo "never")
+            local backup_result=$(systemctl show server-backup -p Result --value 2>/dev/null || echo "unknown")
+            local backup_timer=$(systemctl is-active server-backup.timer 2>/dev/null || echo "inactive")
+
+            respond "{\"load\":$load,\"memory_pct\":$mem_pct,\"disk_pct\":$disk_pct,\"uptime\":\"$uptime_str\",\"failed_services\":$failed_count,\"services\":$services,\"backup\":{\"last\":\"$backup_last\",\"result\":\"$backup_result\",\"timer\":\"$backup_timer\"}}"
+            ;;
+        *)
+            respond '{"error":"not found"}'
+            ;;
+    esac
+}
+
+# Called by socat for each connection
+if [[ "${1:-}" == "--handle" ]]; then
+    handle_request
+    exit 0
+fi
+
+# Simple TCP server using socat
+exec socat TCP-LISTEN:$PORT,reuseaddr,fork SYSTEM:"$0 --handle"

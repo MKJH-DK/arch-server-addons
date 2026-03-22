@@ -1,0 +1,45 @@
+{% if admin_dashboard_domain | length > 0 %}
+http://{{ admin_dashboard_domain }} {
+	# Basic auth for entire admin domain
+	basicauth * {
+		{{ caddy_auth_user }} {{ caddy_auth_hash }}
+	}
+
+	# Dashboard
+	root * {{ admin_dashboard_path }}
+	file_server
+
+	# Status API (no-auth internally, protected by outer basicauth)
+	reverse_proxy /api/* 127.0.0.1:9100
+
+{% if syncthing_domain | default('') | length > 0 %}
+	# Syncthing
+	handle_path /syncthing/* {
+		reverse_proxy 127.0.0.1:8384 {
+			header_up Host localhost
+		}
+	}
+{% endif %}
+
+{% if ollama_enabled | default(false) | bool %}
+	# Ollama
+	handle_path /ollama/* {
+		reverse_proxy {{ ollama_bind_address | default('127.0.0.1') }}:{{ ollama_port | default(11434) }}
+	}
+{% endif %}
+
+{% if mcp_server_enabled | default(false) | bool %}
+	# MCP Server
+	handle_path /mcp/* {
+		reverse_proxy {{ mcp_server_bind_address | default('127.0.0.1') }}:{{ mcp_server_port | default(8100) }}
+	}
+{% endif %}
+
+{% if crowdsec_enabled | default(false) | bool %}
+	# CrowdSec
+	handle_path /crowdsec/* {
+		reverse_proxy 127.0.0.1:{{ crowdsec_agent_port | default(8080) }}
+	}
+{% endif %}
+}
+{% endif %}

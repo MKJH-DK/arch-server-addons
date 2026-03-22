@@ -1,0 +1,6 @@
+---
+# Admin Dashboard — single admin portal for all server tools
+admin_dashboard_enabled: true
+admin_dashboard_domain: "{{ admin_domain | default('') }}"
+admin_dashboard_path: "/srv/admin"
+admin_dashboard_caddy_config: "/etc/caddy/conf.d/admin-dashboard.caddy"

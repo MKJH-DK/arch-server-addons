@@ -78,6 +78,10 @@
     mcp_tool_hive_research_enabled: "{{ mcp_tool_hive_research_enabled | default(false) }}"
     mcp_tool_hive_research_path: "{{ mcp_tool_hive_research_path | default('/srv/vault/04-repos/01-active/hive-research') }}"
 
+    # Admin Dashboard variables
+    admin_dashboard_enabled: "{{ admin_dashboard_enabled | default(false) }}"
+    admin_domain: "{{ admin_domain | default('') }}"
+
     # AI CLI tool variables
     claude_cli_enabled: "{{ claude_cli_enabled | default(false) }}"
     gemini_cli_enabled: "{{ gemini_cli_enabled | default(false) }}"
@@ -484,6 +488,10 @@
       when: mcp_server_enabled | bool
       tags: [mcp, mcp-server]
 
+    - role: ../../addons/admin-dashboard
+      when: admin_dashboard_enabled | default(false) | bool
+      tags: [admin, dashboard]
+
   post_tasks:
     - name: Validate Caddy configuration
       ansible.builtin.command:
@@ -530,6 +538,7 @@
             + ([syncthing_domain] if syncthing_domain | default('') | length > 0 else [])
             + ([ollama_domain] if ollama_domain | default('') | length > 0 else [])
             + ([cloudflare_ssh_domain] if cloudflare_ssh_domain | default('') | length > 0 else [])
+            + ([admin_domain] if admin_domain | default('') | length > 0 else [])
           }}
       when: cloudflare_tunnel_id | default('') | length > 0
 
@@ -684,6 +693,9 @@
           - "  - API: http://{{ ollama_bind_address }}:{{ ollama_port }}"
           - "  - Data: {{ ollama_data_path }}"
           - "  - Memory limit: {{ ollama_memory_max }}"
+          - ""
+          - "Admin Dashboard: {{ 'ENABLED' if admin_dashboard_enabled | default(false) | bool else 'disabled' }}"
+          - "  - Domain: {{ admin_domain | default('not set') }}"
           - ""
           - "MCP Server: {{ 'ENABLED' if mcp_server_enabled | default(false) | bool else 'disabled' }}"
           - "  - API: http://{{ mcp_server_bind_address }}:{{ mcp_server_port }}"

@@ -1,0 +1,74 @@
+---
+# Admin Dashboard — deploys static HTML dashboard behind basic auth
+
+- name: Install socat (required for status API)
+  ansible.builtin.pacman:
+    name: socat
+    state: present
+
+- name: Create admin dashboard directory
+  ansible.builtin.file:
+    path: "{{ admin_dashboard_path }}"
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+
+- name: Deploy dashboard HTML
+  ansible.builtin.template:
+    src: index.html.j2
+    dest: "{{ admin_dashboard_path }}/index.html"
+    mode: '0644'
+  notify: Reload caddy
+
+- name: Deploy dashboard CSS
+  ansible.builtin.copy:
+    src: ethereal.css
+    dest: "{{ admin_dashboard_path }}/ethereal.css"
+    mode: '0644'
+
+- name: Deploy status API script
+  ansible.builtin.template:
+    src: status-api.sh.j2
+    dest: /usr/local/bin/admin-status-api
+    mode: '0755'
+
+- name: Deploy status API systemd service
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/admin-status-api.service
+    mode: '0644'
+    content: |
+      [Unit]
+      Description=Admin dashboard status API
+      After=network.target
+
+      [Service]
+      ExecStart=/usr/local/bin/admin-status-api
+      Restart=on-failure
+      RestartSec=5s
+      NoNewPrivileges=yes
+
+      [Install]
+      WantedBy=multi-user.target
+
+- name: Enable and start status API
+  ansible.builtin.systemd:
+    name: admin-status-api
+    state: restarted
+    enabled: true
+    daemon_reload: true
+
+- name: Deploy Caddy config for admin dashboard
+  ansible.builtin.template:
+    src: admin-dashboard.caddy.j2
+    dest: "{{ admin_dashboard_caddy_config }}"
+    mode: '0644'
+  notify: Reload caddy
+
+- name: Display admin dashboard info
+  ansible.builtin.debug:
+    msg:
+      - "Admin dashboard deployed"
+      - "  Domain: {{ admin_dashboard_domain }}"
+      - "  Auth: basic auth (credentials in /etc/caddy/.auth-credentials)"
+      - "  Path: {{ admin_dashboard_path }}"
