@@ -1,0 +1,247 @@
+---
+# MCP Server — Model Context Protocol server
+# Provides AI tools (Claude Code, Cursor, etc.) access to server resources
+
+# ── Dependencies ─────────────────────────────────────────
+
+- name: Ensure Python 3.11+ is installed
+  ansible.builtin.pacman:
+    name:
+      - python
+      - python-pip
+      - python-virtualenv
+    state: present
+
+# ── User and directories ─────────────────────────────────
+
+- name: Create MCP system group
+  ansible.builtin.group:
+    name: "{{ mcp_server_group }}"
+    system: yes
+
+- name: Create MCP system user
+  ansible.builtin.user:
+    name: "{{ mcp_server_user }}"
+    group: "{{ mcp_server_group }}"
+    system: yes
+    create_home: no
+    shell: /usr/sbin/nologin
+
+- name: Create MCP directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ mcp_server_user }}"
+    group: "{{ mcp_server_group }}"
+    mode: '0755'
+  loop:
+    - "{{ mcp_server_data_path }}"
+    - "{{ mcp_server_data_path }}/tools"
+    - "{{ mcp_server_config_path }}"
+    - "{{ mcp_server_log_path }}"
+
+# ── Python virtualenv ────────────────────────────────────
+
+- name: Create Python virtualenv
+  ansible.builtin.command:
+    cmd: "{{ mcp_server_python }} -m venv {{ mcp_server_venv_path }}"
+    creates: "{{ mcp_server_venv_path }}/bin/python"
+
+- name: Set venv ownership
+  ansible.builtin.file:
+    path: "{{ mcp_server_venv_path }}"
+    owner: "{{ mcp_server_user }}"
+    group: "{{ mcp_server_group }}"
+    recurse: yes
+
+- name: Install MCP SDK and dependencies
+  ansible.builtin.pip:
+    name:
+      - "mcp[cli]"
+      - pydantic
+      - httpx
+      - tree-sitter
+      - tree-sitter-python
+      - tree-sitter-javascript
+      - tree-sitter-typescript
+      - tree-sitter-go
+      - tree-sitter-rust
+    virtualenv: "{{ mcp_server_venv_path }}"
+    state: present
+
+# ── Deploy server code ───────────────────────────────────
+
+- name: Deploy MCP server main script
+  ansible.builtin.template:
+    src: mcp_server.py.j2
+    dest: "{{ mcp_server_data_path }}/server.py"
+    owner: "{{ mcp_server_user }}"
+    group: "{{ mcp_server_group }}"
+    mode: '0755'
+  notify: Restart mcp-server
+
+- name: Deploy tool modules
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ mcp_server_data_path }}/tools/"
+    owner: "{{ mcp_server_user }}"
+    group: "{{ mcp_server_group }}"
+    mode: '0644'
+  loop:
+    - tool_ollama.py
+    - tool_repo_digest.py
+    - tool_knowledge_feed.py
+    - tool_hive_research.py
+  notify: Restart mcp-server
+
+# ── Auth token (reuse existing on re-deploys) ────────────
+
+- name: Check for existing MCP auth token
+  ansible.builtin.stat:
+    path: "{{ mcp_server_config_path }}/config.json"
+  register: mcp_existing_config
+
+- name: Read existing auth token
+  ansible.builtin.shell: >
+    python3 -c "import json; print(json.load(open('{{ mcp_server_config_path }}/config.json'))['auth_token'])"
+  register: mcp_existing_token
+  changed_when: false
+  failed_when: false
+  when: mcp_existing_config.stat.exists
+
+- name: Reuse existing auth token
+  ansible.builtin.set_fact:
+    mcp_server_auth_token: "{{ mcp_existing_token.stdout }}"
+  when: >
+    mcp_server_auth_token | length == 0
+    and mcp_existing_config.stat.exists
+    and mcp_existing_token.stdout | default('') | length > 0
+
+- name: Generate auth token (first deploy only)
+  ansible.builtin.set_fact:
+    mcp_server_auth_token: "{{ lookup('pipe', 'python3 -c \"import secrets; print(secrets.token_urlsafe(32))\"') }}"
+  when: mcp_server_auth_token | length == 0 and mcp_server_auth_enabled | bool
+
+- name: Deploy MCP server config
+  ansible.builtin.template:
+    src: mcp_config.json.j2
+    dest: "{{ mcp_server_config_path }}/config.json"
+    owner: "{{ mcp_server_user }}"
+    group: "{{ mcp_server_group }}"
+    mode: '0600'
+  notify: Restart mcp-server
+
+# ── Systemd service ──────────────────────────────────────
+
+- name: Deploy MCP server systemd service
+  ansible.builtin.template:
+    src: mcp-server.service.j2
+    dest: /etc/systemd/system/mcp-server.service
+    mode: '0644'
+  notify: Restart mcp-server
+
+- name: Enable and start MCP server
+  ansible.builtin.systemd:
+    name: mcp-server
+    enabled: yes
+    state: started
+    daemon_reload: yes
+
+- name: Wait for MCP server to be ready
+  ansible.builtin.wait_for:
+    host: "{{ mcp_server_bind_address }}"
+    port: "{{ mcp_server_port }}"
+    timeout: 30
+  register: mcp_health
+  failed_when: false
+  when: mcp_server_transport == "http"
+
+# ── Caddy reverse proxy ─────────────────────────────────
+
+- name: Deploy MCP Caddy config
+  ansible.builtin.template:
+    src: mcp-server.caddy.j2
+    dest: "{{ mcp_server_caddy_config }}"
+    mode: '0644'
+  when: mcp_server_caddy_enabled | bool
+  notify: Reload caddy
+
+# ── Client config helper ────────────────────────────────
+
+- name: Generate .mcp.json snippet for clients
+  ansible.builtin.template:
+    src: mcp_client_config.json.j2
+    dest: "{{ mcp_server_data_path }}/client-config.json"
+    owner: "{{ mcp_server_user }}"
+    group: "{{ mcp_server_group }}"
+    mode: '0644'
+
+# ── Summary ──────────────────────────────────────────────
+
+- name: Display setup information
+  ansible.builtin.debug:
+    msg:
+      - "MCP Server installed successfully"
+      - "  Transport: {{ mcp_server_transport }}"
+      - "  Address: http://{{ mcp_server_bind_address }}:{{ mcp_server_port }}"
+      - "  Auth: {{ 'Enabled (token in ' + mcp_server_config_path + '/config.json)' if mcp_server_auth_enabled else 'Disabled' }}"
+      - "  Status: {{ 'Ready' if mcp_health is not failed else 'Starting...' }}"
+      - ""
+      - "Enabled tools:"
+      - "  {{ '✓' if mcp_tool_ollama_enabled else '✗' }} Ollama (local LLM inference)"
+      - "  {{ '✓' if mcp_tool_repo_digest_enabled else '✗' }} Repo Digest (codebase analysis)"
+      - "  {{ '✓' if mcp_tool_knowledge_feed_enabled else '✗' }} Knowledge Feed (AI/Python sources)"
+      - "  {{ '✓' if mcp_tool_hive_research_enabled else '✗' }} Hive Research (research runs)"
+      - ""
+      - "Client config (copy to .mcp.json):"
+      - "  {{ mcp_server_data_path }}/client-config.json"
+      - ""
+      - "Management:"
+      - "  mcp-manage status       # Show server status"
+      - "  mcp-manage tools        # List available tools"
+      - "  mcp-manage restart      # Restart server"
+      - "  mcp-manage token        # Show auth token"
+
+# ── Management script ────────────────────────────────────
+
+- name: Create MCP management script
+  ansible.builtin.copy:
+    dest: /usr/local/bin/mcp-manage
+    mode: '0755'
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      CONFIG="{{ mcp_server_config_path }}/config.json"
+      SERVER="http://{{ mcp_server_bind_address }}:{{ mcp_server_port }}"
+
+      case "${1:-status}" in
+        status)
+          echo "=== MCP Server Status ==="
+          systemctl status mcp-server --no-pager -l 2>/dev/null || echo "Service not running"
+          echo ""
+          echo "=== Health Check ==="
+          curl -sf "$SERVER/sse" --max-time 2 -o /dev/null 2>/dev/null && echo "OK — listening on port {{ mcp_server_port }}" || echo "Cannot connect"
+          echo ""
+          echo "=== Logs (last 20) ==="
+          journalctl -u mcp-server --no-pager -n 20 2>/dev/null
+          ;;
+        tools)
+          echo "=== Available MCP Tools ==="
+          TOKEN=$(python3 -c "import json; print(json.load(open('$CONFIG'))['auth_token'])" 2>/dev/null || echo "")
+          curl -s -H "Authorization: Bearer $TOKEN" "$SERVER/tools" 2>/dev/null | python3 -m json.tool || echo "Cannot list tools"
+          ;;
+        restart)
+          systemctl restart mcp-server
+          echo "MCP server restarted"
+          ;;
+        token)
+          python3 -c "import json; print(json.load(open('$CONFIG'))['auth_token'])" 2>/dev/null || echo "Token not found"
+          ;;
+        logs)
+          journalctl -u mcp-server -f
+          ;;
+        *)
+          echo "Usage: mcp-manage {status|tools|restart|token|logs}"
+          ;;
+      esac

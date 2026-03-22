@@ -1,0 +1,86 @@
+#!/usr/bin/env python3
+"""MCP Server — Model Context Protocol server for AI tools.
+
+Deployed by arch-server-addons Ansible role.
+Config: {{ mcp_server_config_path }}/config.json
+"""
+
+import json
+import logging
+import os
+import sys
+import importlib
+from pathlib import Path
+
+from mcp.server.fastmcp import FastMCP
+
+# ── Configuration ───────────────────────────────────────────
+
+CONFIG_PATH = os.environ.get("MCP_CONFIG", "{{ mcp_server_config_path }}/config.json")
+LOG_PATH = os.environ.get("MCP_LOG_PATH", "{{ mcp_server_log_path }}")
+
+with open(CONFIG_PATH) as f:
+    config = json.load(f)
+
+# ── Logging ─────────────────────────────────────────────────
+
+os.makedirs(LOG_PATH, exist_ok=True)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[
+        logging.FileHandler(Path(LOG_PATH) / "server.log"),
+        logging.StreamHandler(),
+    ],
+)
+log = logging.getLogger("mcp-server")
+
+# ── Server setup ────────────────────────────────────────────
+
+mcp = FastMCP(
+    "arch-server",
+    host=config.get("host", "127.0.0.1"),
+    port=config.get("port", 8100),
+)
+
+# ── Load tool modules ──────────────────────────────────────
+
+TOOLS_DIR = Path(__file__).parent / "tools"
+sys.path.insert(0, str(TOOLS_DIR))
+
+tool_modules = {
+    "ollama": {{ mcp_tool_ollama_enabled | lower }},
+    "repo_digest": {{ mcp_tool_repo_digest_enabled | lower }},
+    "knowledge_feed": {{ mcp_tool_knowledge_feed_enabled | lower }},
+    "hive_research": {{ mcp_tool_hive_research_enabled | lower }},
+}
+
+loaded_tools = 0
+for tool_name, enabled in tool_modules.items():
+    if not enabled:
+        log.info("Tool disabled: %s", tool_name)
+        continue
+    try:
+        module = importlib.import_module(f"tool_{tool_name}")
+        module.register(mcp, config)
+        loaded_tools += 1
+        log.info("Tool loaded: %s", tool_name)
+    except Exception:
+        log.exception("Failed to load tool: %s", tool_name)
+
+log.info("Loaded %d tool modules", loaded_tools)
+
+# ── Run server ──────────────────────────────────────────────
+
+if __name__ == "__main__":
+    transport = config.get("transport", "http")
+
+    if "--stdio" in sys.argv:
+        transport = "stdio"
+
+    log.info("Starting MCP server (transport=%s)", transport)
+
+    if transport == "stdio":
+        mcp.run(transport="stdio")
+    else:
+        mcp.run(transport="sse")

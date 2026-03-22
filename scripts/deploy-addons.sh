@@ -135,6 +135,8 @@ echo "  Immich: ${IMMICH_ENABLED:-false}"
 echo "  CrowdSec: ${CROWDSEC_ENABLED:-false}"
 echo "  Ollama: ${OLLAMA_ENABLED:-false}"
 echo ""
+echo "  MCP Server: ${MCP_SERVER_ENABLED:-false}"
+echo ""
 echo "  AI CLI Tools:"
 echo "    Claude Code: ${CLAUDE_CLI_ENABLED:-false}"
 echo "    Gemini CLI: ${GEMINI_CLI_ENABLED:-false}"
@@ -215,6 +217,21 @@ ansible-playbook -i "$BASE_INVENTORY" \
     -e "cloudflare_tunnel_id=${CLOUDFLARE_TUNNEL_ID:-}" \
     -e "cloudflare_credentials_file=${CLOUDFLARE_CREDENTIALS_FILE:-}" \
     -e "{\"cloudflare_extra_domains\": $(python3 -c "import json,sys; print(json.dumps([x.strip() for x in '${CLOUDFLARE_EXTRA_DOMAINS:-}'.split(',') if x.strip()]))")}" \
+    -e "mcp_server_enabled=${MCP_SERVER_ENABLED:-false}" \
+    -e "mcp_server_port=${MCP_SERVER_PORT:-8100}" \
+    -e "mcp_server_bind_address=${MCP_SERVER_BIND_ADDRESS:-127.0.0.1}" \
+    -e "mcp_server_transport=${MCP_SERVER_TRANSPORT:-http}" \
+    -e "mcp_server_auth_enabled=${MCP_SERVER_AUTH_ENABLED:-true}" \
+    -e "mcp_server_auth_token=${MCP_SERVER_AUTH_TOKEN:-}" \
+    -e "mcp_server_caddy_enabled=${MCP_SERVER_CADDY_ENABLED:-false}" \
+    -e "mcp_server_domain=${MCP_SERVER_DOMAIN:-}" \
+    -e "mcp_server_url_prefix=${MCP_SERVER_URL_PREFIX:-/mcp}" \
+    -e "mcp_tool_ollama_enabled=${MCP_TOOL_OLLAMA_ENABLED:-true}" \
+    -e "mcp_tool_repo_digest_enabled=${MCP_TOOL_REPO_DIGEST_ENABLED:-true}" \
+    -e "mcp_tool_knowledge_feed_enabled=${MCP_TOOL_KNOWLEDGE_FEED_ENABLED:-false}" \
+    -e "mcp_tool_knowledge_feed_path=${MCP_TOOL_KNOWLEDGE_FEED_PATH:-/srv/vault/02-knowledge}" \
+    -e "mcp_tool_hive_research_enabled=${MCP_TOOL_HIVE_RESEARCH_ENABLED:-false}" \
+    -e "mcp_tool_hive_research_path=${MCP_TOOL_HIVE_RESEARCH_PATH:-/srv/vault/04-repos/01-active/hive-research}" \
     -e "claude_cli_enabled=${CLAUDE_CLI_ENABLED:-false}" \
     -e "gemini_cli_enabled=${GEMINI_CLI_ENABLED:-false}" \
     -e "shellgpt_enabled=${SHELLGPT_ENABLED:-false}" \
@@ -269,6 +286,14 @@ if [[ $? -eq 0 ]]; then
         echo "    - Pull model: ollama pull llama3.1:8b"
         echo "    - Chat: ollama run llama3.1:8b"
         echo "    - Status: ollama-manage status"
+    fi
+
+    if [[ "${MCP_SERVER_ENABLED:-false}" == "true" ]]; then
+        echo "  MCP Server:"
+        echo "    - API: http://${MCP_SERVER_BIND_ADDRESS:-127.0.0.1}:${MCP_SERVER_PORT:-8100}"
+        echo "    - Transport: ${MCP_SERVER_TRANSPORT:-http}"
+        echo "    - Client config: /srv/mcp/client-config.json"
+        echo "    - Status: mcp-manage status"
     fi
 
     # AI CLI Tools

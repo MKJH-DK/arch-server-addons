@@ -1,0 +1,21 @@
+{
+  "mcpServers": {
+    "arch-server": {
+{% if mcp_server_transport == "http" %}
+{% if mcp_server_caddy_enabled | bool and mcp_server_domain | length > 0 %}
+      "url": "https://{{ mcp_server_domain }}/sse",
+{% else %}
+      "url": "http://{{ mcp_server_bind_address }}:{{ mcp_server_port }}/sse",
+{% endif %}
+{% if mcp_server_auth_enabled | bool %}
+      "headers": {
+        "Authorization": "Bearer {{ mcp_server_auth_token }}"
+      }
+{% endif %}
+{% else %}
+      "command": "ssh",
+      "args": ["{{ ansible_host | default('server') }}", "{{ mcp_server_venv_path }}/bin/python", "{{ mcp_server_data_path }}/server.py", "--stdio"]
+{% endif %}
+    }
+  }
+}

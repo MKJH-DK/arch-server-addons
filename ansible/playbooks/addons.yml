@@ -61,6 +61,23 @@
     # Syncthing external access
     syncthing_domain: "{{ syncthing_domain | default('') }}"
 
+    # MCP Server variables
+    mcp_server_enabled: "{{ mcp_server_enabled | default(false) }}"
+    mcp_server_port: "{{ mcp_server_port | default(8100) }}"
+    mcp_server_bind_address: "{{ mcp_server_bind_address | default('127.0.0.1') }}"
+    mcp_server_transport: "{{ mcp_server_transport | default('http') }}"
+    mcp_server_auth_enabled: "{{ mcp_server_auth_enabled | default(true) }}"
+    mcp_server_auth_token: "{{ mcp_server_auth_token | default('') }}"
+    mcp_server_caddy_enabled: "{{ mcp_server_caddy_enabled | default(false) }}"
+    mcp_server_domain: "{{ mcp_server_domain | default('') }}"
+    mcp_server_url_prefix: "{{ mcp_server_url_prefix | default('/mcp') }}"
+    mcp_tool_ollama_enabled: "{{ mcp_tool_ollama_enabled | default(true) }}"
+    mcp_tool_repo_digest_enabled: "{{ mcp_tool_repo_digest_enabled | default(true) }}"
+    mcp_tool_knowledge_feed_enabled: "{{ mcp_tool_knowledge_feed_enabled | default(false) }}"
+    mcp_tool_knowledge_feed_path: "{{ mcp_tool_knowledge_feed_path | default('/srv/vault/02-knowledge') }}"
+    mcp_tool_hive_research_enabled: "{{ mcp_tool_hive_research_enabled | default(false) }}"
+    mcp_tool_hive_research_path: "{{ mcp_tool_hive_research_path | default('/srv/vault/04-repos/01-active/hive-research') }}"
+
     # AI CLI tool variables
     claude_cli_enabled: "{{ claude_cli_enabled | default(false) }}"
     gemini_cli_enabled: "{{ gemini_cli_enabled | default(false) }}"
@@ -463,6 +480,10 @@
       when: codex_enabled | bool
       tags: [codex, ai-tools]
 
+    - role: ../../addons/mcp-server
+      when: mcp_server_enabled | bool
+      tags: [mcp, mcp-server]
+
   post_tasks:
     - name: Validate Caddy configuration
       ansible.builtin.command:
@@ -663,6 +684,10 @@
           - "  - API: http://{{ ollama_bind_address }}:{{ ollama_port }}"
           - "  - Data: {{ ollama_data_path }}"
           - "  - Memory limit: {{ ollama_memory_max }}"
+          - ""
+          - "MCP Server: {{ 'ENABLED' if mcp_server_enabled | default(false) | bool else 'disabled' }}"
+          - "  - API: http://{{ mcp_server_bind_address }}:{{ mcp_server_port }}"
+          - "  - Transport: {{ mcp_server_transport }}"
           - ""
           - "AI CLI Tools:"
           - "  Claude Code: {{ 'ENABLED' if claude_cli_enabled | default(false) | bool else 'disabled' }}"

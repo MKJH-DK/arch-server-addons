@@ -1,0 +1,26 @@
+{
+  "transport": "{{ mcp_server_transport }}",
+  "host": "{{ mcp_server_bind_address }}",
+  "port": {{ mcp_server_port }},
+  "auth_enabled": {{ mcp_server_auth_enabled | lower }},
+  "auth_token": "{{ mcp_server_auth_token }}",
+  "log_path": "{{ mcp_server_log_path }}",
+  "tools": {
+    "ollama": {
+      "enabled": {{ mcp_tool_ollama_enabled | lower }},
+      "url": "{{ mcp_tool_ollama_url }}"
+    },
+    "repo_digest": {
+      "enabled": {{ mcp_tool_repo_digest_enabled | lower }},
+      "max_files": {{ mcp_tool_repo_digest_max_files }}
+    },
+    "knowledge_feed": {
+      "enabled": {{ mcp_tool_knowledge_feed_enabled | lower }},
+      "path": "{{ mcp_tool_knowledge_feed_path }}"
+    },
+    "hive_research": {
+      "enabled": {{ mcp_tool_hive_research_enabled | lower }},
+      "path": "{{ mcp_tool_hive_research_path }}"
+    }
+  }
+}

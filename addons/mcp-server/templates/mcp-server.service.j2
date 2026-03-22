@@ -1,0 +1,36 @@
+[Unit]
+Description=MCP Server — Model Context Protocol for AI tools
+After=network-online.target ollama.service
+Wants=network-online.target
+
+[Service]
+ExecStart={{ mcp_server_venv_path }}/bin/python {{ mcp_server_data_path }}/server.py
+WorkingDirectory={{ mcp_server_data_path }}
+User={{ mcp_server_user }}
+Group={{ mcp_server_group }}
+Restart=on-failure
+RestartSec=5s
+
+# Environment
+Environment="MCP_CONFIG={{ mcp_server_config_path }}/config.json"
+Environment="MCP_LOG_PATH={{ mcp_server_log_path }}"
+Environment="PYTHONUNBUFFERED=1"
+
+# Security hardening
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths={{ mcp_server_data_path }} {{ mcp_server_log_path }} /tmp
+{% if mcp_tool_knowledge_feed_enabled | bool %}
+ReadOnlyPaths={{ mcp_tool_knowledge_feed_path }}
+{% endif %}
+{% if mcp_tool_hive_research_enabled | bool %}
+ReadWritePaths={{ mcp_tool_hive_research_path }}
+{% endif %}
+
+# Resource limits
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

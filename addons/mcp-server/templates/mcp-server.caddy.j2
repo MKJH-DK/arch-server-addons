@@ -1,0 +1,6 @@
+{# MCP Server Caddy Configuration #}
+{% if mcp_server_domain | length > 0 %}
+http://{{ mcp_server_domain }} {
+	reverse_proxy {{ mcp_server_bind_address }}:{{ mcp_server_port }}
+}
+{% endif %}

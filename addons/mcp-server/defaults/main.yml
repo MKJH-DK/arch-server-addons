@@ -1,0 +1,52 @@
+---
+# MCP Server — Model Context Protocol server for AI tools
+# Exposes local tools (Ollama, repo analysis, knowledge feed) to Claude Code, Cursor, etc.
+# https://modelcontextprotocol.io
+
+# Service
+mcp_server_enabled: true
+mcp_server_user: "mcp"
+mcp_server_group: "mcp"
+mcp_server_port: 8100
+mcp_server_bind_address: "127.0.0.1"
+
+# Transport mode: "stdio" (local only) or "http" (remote access)
+mcp_server_transport: "http"
+
+# Storage
+mcp_server_data_path: "/srv/mcp"
+mcp_server_config_path: "/etc/mcp"
+mcp_server_log_path: "/var/log/mcp"
+
+# Python virtualenv
+mcp_server_venv_path: "/srv/mcp/venv"
+mcp_server_python: "python3"
+
+# Authentication (required for http transport)
+mcp_server_auth_enabled: true
+mcp_server_auth_token: ""  # Set in addons.env — generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"
+
+# Caddy reverse proxy (expose via domain/path)
+mcp_server_caddy_enabled: false
+mcp_server_caddy_config: "/etc/caddy/conf.d/mcp-server.caddy"
+mcp_server_domain: ""
+mcp_server_url_prefix: "/mcp"
+
+# ── Tool modules ─────────────────────────────────────────
+# Enable/disable individual MCP tools exposed by the server
+
+# Ollama integration — query local models via MCP
+mcp_tool_ollama_enabled: true
+mcp_tool_ollama_url: "http://127.0.0.1:11434"
+
+# Repo digest — token-efficient codebase analysis
+mcp_tool_repo_digest_enabled: true
+mcp_tool_repo_digest_max_files: 500
+
+# Knowledge feed — search scraped AI/Python knowledge base
+mcp_tool_knowledge_feed_enabled: false
+mcp_tool_knowledge_feed_path: "/srv/vault/02-knowledge"
+
+# Hive research — trigger research runs remotely
+mcp_tool_hive_research_enabled: false
+mcp_tool_hive_research_path: "/srv/vault/04-repos/01-active/hive-research"

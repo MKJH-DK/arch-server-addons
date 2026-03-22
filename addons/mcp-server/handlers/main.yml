@@ -1,0 +1,11 @@
+---
+- name: Restart mcp-server
+  ansible.builtin.systemd:
+    name: mcp-server
+    state: restarted
+    daemon_reload: yes
+
+- name: Reload caddy
+  ansible.builtin.systemd:
+    name: caddy
+    state: reloaded

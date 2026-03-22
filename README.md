@@ -16,13 +16,14 @@ Dette repo indeholder addons til Arch Server base installationen. Addons er desi
 4. **Immich** - Self-hosted fotostyring (kræver Docker)
 5. **CrowdSec** - Udvidet sikkerhedskonfiguration (oveni base-installationen)
 6. **Ollama** - Kør LLMs lokalt på serveren (backend for AI CLI tools)
+7. **MCP Server** - Model Context Protocol server — eksponerer server-tools til AI-klienter
 
 **AI CLI Tools:**
 
-7. **Claude Code** - Anthropic's AI kodningsassistent (`claude`)
-8. **Gemini CLI** - Google's AI kodningsassistent (`gemini`)
-9. **ShellGPT** - AI i terminalen via sgpt (`sgpt`)
-10. **Codex** - OpenAI's AI kodningsagent (`codex`)
+8. **Claude Code** - Anthropic's AI kodningsassistent (`claude`)
+9. **Gemini CLI** - Google's AI kodningsassistent (`gemini`)
+10. **ShellGPT** - AI i terminalen via sgpt (`sgpt`)
+11. **Codex** - OpenAI's AI kodningsagent (`codex`)
 
 ## Forudsætninger
 
@@ -114,6 +115,15 @@ OBSIDIAN_URL_PREFIX="/wiki"
 - **Modeller**: llama3.1, codellama, mistral, qwen2.5-coder, m.fl.
 - **Krav**: Min. 8 GB RAM (anbefalet 16+ GB), GPU valgfrit men anbefalet
 
+### MCP Server
+
+- **Formål**: Model Context Protocol server — giver AI-klienter (Claude Code, Cursor) adgang til server-tools
+- **Transport**: HTTP (remote) eller stdio (lokal SSH)
+- **Tools**: Ollama (LLM-queries), Repo Digest (kodebase-analyse), Knowledge Feed (vidensøgning), Hive Research (forskningskørsler)
+- **Auth**: Bearer token (auto-genereret)
+- **Kommandoer**: `mcp-manage status|tools|restart|token|logs`
+- **Krav**: Python 3.11+, MCP SDK (`pip install mcp[cli]`)
+
 ### Claude Code
 
 - **Formål**: Anthropic's AI kodningsassistent i terminalen
@@ -153,6 +163,7 @@ arch-server-addons/
 │   ├── immich/               # Fotostyring addon
 │   ├── crowdsec/             # Udvidet sikkerhed addon
 │   ├── ollama/               # Lokal LLM server
+│   ├── mcp-server/           # MCP Server (AI tool integration)
 │   ├── claude-cli/           # Claude Code CLI
 │   ├── gemini-cli/           # Gemini CLI
 │   ├── shellgpt/             # ShellGPT (sgpt)
