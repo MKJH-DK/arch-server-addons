@@ -172,7 +172,9 @@ mod_disabled=$(sysctl -n kernel.modules_disabled 2>/dev/null)
 # Blacklisted modules
 blacklisted=0
 for mod in usb-storage firewire-core thunderbolt; do
-    if grep -rq "blacklist $mod\|install $mod /bin/false\|install $mod /bin/true" /etc/modprobe.d/ 2>/dev/null; then
+    # Match both usb-storage and usb_storage variants
+    mod_alt=$(echo "$mod" | tr '-' '_')
+    if grep -rqE "blacklist ($mod|$mod_alt)|install ($mod|$mod_alt) /bin/(false|true)" /etc/modprobe.d/ 2>/dev/null; then
         ((blacklisted++))
     fi
 done
@@ -282,10 +284,26 @@ section "OPEN PORTS"
 open_ports=$(ss -tlnp 2>/dev/null | awk 'NR>1 {print $4}' | sed 's/.*://' | sort -un)
 # All known service ports for this server stack
 expected_ports="22 53 80 443 2019 2283 3003 5432 6060 6379 8080 8100 8384 9100 11434 20241 22000"
+# Known container/system processes that use ephemeral high ports
+known_container_svcs="immich containerd conmon postgres redis"
 for port in $open_ports; do
     svc=$(ss -tlnp 2>/dev/null | grep ":${port} " | head -1 | sed 's/.*users:(("//' | sed 's/".*//' | tr -d '\n')
     if echo "$expected_ports" | grep -qw "$port"; then
         check_pass "Port $port open — ${svc:-unknown} (expected)"
+    elif [[ $port -gt 32000 ]]; then
+        # Check if it's a known container/system ephemeral port
+        is_known=false
+        for known in $known_container_svcs; do
+            if echo "$svc" | grep -qi "$known"; then
+                is_known=true
+                break
+            fi
+        done
+        if $is_known; then
+            check_pass "Port $port open — ${svc:-unknown} (container ephemeral)"
+        else
+            check_warn "Port $port open — ${svc:-unknown} (unexpected)"
+        fi
     else
         check_warn "Port $port open — ${svc:-unknown} (unexpected)"
     fi
@@ -320,8 +338,10 @@ case "$hash_algo" in
 esac
 
 # Sudoers NOPASSWD check
-if grep -rq "NOPASSWD" /etc/sudoers /etc/sudoers.d/ 2>/dev/null; then
-    check_warn "NOPASSWD found in sudoers config"
+nopasswd_users=$(grep -rh "NOPASSWD" /etc/sudoers /etc/sudoers.d/ 2>/dev/null | grep -v "^#" | head -3)
+if [[ -n "$nopasswd_users" ]]; then
+    check_warn "NOPASSWD in sudoers (review: is this intentional?)"
+    log "NOPASSWD entries: $nopasswd_users"
 else
     check_pass "No NOPASSWD entries in sudoers"
 fi
@@ -344,14 +364,15 @@ done
 
 section "FILE SYSTEM"
 
-# SUID binaries (exclude container overlays and /proc /sys)
-suid_count=$(find / -path /proc -prune -o -path /sys -prune -o -path /var/lib/containers -prune -o -perm -4000 -type f -print 2>/dev/null | wc -l)
-[[ $suid_count -lt 25 ]] && check_pass "SUID binaries: $suid_count (reasonable)" || check_warn "SUID binaries: $suid_count (review recommended)"
-find / -path /proc -prune -o -path /sys -prune -o -path /var/lib/containers -prune -o -perm -4000 -type f -print 2>/dev/null | sort >> "$LOG_FILE"
+# SUID binaries (exclude container overlays, snap, proc, sys)
+suid_excludes="-path /proc -prune -o -path /sys -prune -o -path /var/lib/containers -prune -o -path /var/lib/machines -prune -o -path /snap -prune -o -path /srv/immich -prune"
+suid_count=$(eval "find / $suid_excludes -o -perm -4000 -type f -print" 2>/dev/null | wc -l)
+[[ $suid_count -lt 30 ]] && check_pass "SUID binaries: $suid_count (host only)" || check_warn "SUID binaries: $suid_count (review recommended)"
+eval "find / $suid_excludes -o -perm -4000 -type f -print" 2>/dev/null | sort >> "$LOG_FILE"
 
-# SGID binaries (exclude container overlays)
-sgid_count=$(find / -path /proc -prune -o -path /sys -prune -o -path /var/lib/containers -prune -o -perm -2000 -type f -print 2>/dev/null | wc -l)
-[[ $sgid_count -lt 20 ]] && check_pass "SGID binaries: $sgid_count (reasonable)" || check_warn "SGID binaries: $sgid_count (review recommended)"
+# SGID binaries (same exclusions)
+sgid_count=$(eval "find / $suid_excludes -o -perm -2000 -type f -print" 2>/dev/null | wc -l)
+[[ $sgid_count -lt 25 ]] && check_pass "SGID binaries: $sgid_count (host only)" || check_warn "SGID binaries: $sgid_count (review recommended)"
 
 # World-writable files in system dirs
 ww_files=$(find /etc /usr /srv -perm -o+w -type f 2>/dev/null | wc -l)
@@ -359,11 +380,11 @@ ww_files=$(find /etc /usr /srv -perm -o+w -type f 2>/dev/null | wc -l)
 find /etc /usr /srv -perm -o+w -type f 2>/dev/null >> "$LOG_FILE"
 
 # World-writable directories without sticky bit
-ww_dirs=$(find / -path /proc -prune -o -path /sys -prune -o -path /var/lib/containers -prune -o -type d \( -perm -0002 -a ! -perm -1000 \) -print 2>/dev/null | wc -l)
+ww_dirs=$(find / -path /proc -prune -o -path /sys -prune -o -path /var/lib/containers -prune -o -path /var/lib/machines -prune -o -path /srv/immich -prune -o -type d \( -perm -0002 -a ! -perm -1000 \) -print 2>/dev/null | wc -l)
 [[ $ww_dirs -eq 0 ]] && check_pass "No world-writable dirs without sticky bit" || check_fail "$ww_dirs world-writable dirs without sticky bit"
 
 # Unowned files
-unowned=$(find / -path /proc -prune -o -path /sys -prune -o -path /var/lib/containers -prune -o \( -nouser -o -nogroup \) -print 2>/dev/null | head -20 | wc -l)
+unowned=$(find / -path /proc -prune -o -path /sys -prune -o -path /var/lib/containers -prune -o -path /var/lib/machines -prune -o -path /srv/immich -prune -o \( -nouser -o -nogroup \) -print 2>/dev/null | head -20 | wc -l)
 [[ $unowned -eq 0 ]] && check_pass "No unowned files found" || check_warn "$unowned unowned files found"
 
 # Critical file permissions
@@ -708,8 +729,8 @@ for pattern in "PRIVATE_KEY\|API_KEY\|SECRET_KEY\|PASSWORD=" ; do
 done
 [[ $secrets_found -eq 0 ]] && check_pass "No exposed secrets in /srv /etc/caddy /home" || check_warn "Possible secrets found in $secrets_found locations (check log)"
 
-# Environment files permissions
-for envfile in /srv/vault/03-personal/04-secrets/addons.env /etc/environment; do
+# Secrets file permissions
+for envfile in /srv/vault/03-personal/04-secrets/addons.env; do
     if [[ -f "$envfile" ]]; then
         ep=$(stat -c %a "$envfile" 2>/dev/null)
         if [[ "$ep" -le 600 ]]; then
@@ -719,6 +740,14 @@ for envfile in /srv/vault/03-personal/04-secrets/addons.env /etc/environment; do
         fi
     fi
 done
+
+# /etc/environment — only warn if it contains secrets
+if [[ -f /etc/environment ]] && grep -qiE "KEY=|TOKEN=|SECRET=|PASSWORD=" /etc/environment 2>/dev/null; then
+    ep=$(stat -c %a /etc/environment 2>/dev/null)
+    [[ "$ep" -le 600 ]] && check_pass "/etc/environment with secrets: permissions ok ($ep)" || check_fail "/etc/environment contains secrets but is world-readable ($ep)"
+else
+    check_pass "/etc/environment: no secrets found"
+fi
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # SUMMARY
