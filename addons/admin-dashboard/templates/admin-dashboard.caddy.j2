@@ -39,5 +39,21 @@ http://{{ admin_dashboard_domain }} {
 		reverse_proxy 127.0.0.1:{{ crowdsec_agent_port | default(8080) }}
 	}
 {% endif %}
+
+{% if cgit_enabled | default(false) | bool %}
+	# cgit — FastCGI proxy
+	handle_path /git/* {
+		reverse_proxy unix/{{ cgit_fcgi_socket | default('/run/cgit-fcgi.sock') }} {
+			transport fastcgi {
+				env SCRIPT_FILENAME /usr/share/webapps/cgit/cgit.cgi
+				env PATH_INFO {path}
+				env QUERY_STRING {query}
+			}
+		}
+	}
+	handle /git {
+		redir /git/ permanent
+	}
+{% endif %}
 }
 {% endif %}

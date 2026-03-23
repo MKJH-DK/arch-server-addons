@@ -18,6 +18,13 @@
     home: "{{ cgit_repo_path }}"
     create_home: false
 
+- name: Add git user to admin group (read access to vault repos)
+  ansible.builtin.user:
+    name: "{{ cgit_fcgi_user }}"
+    groups: "{{ admin_user | default('admin') }}"
+    append: true
+  failed_when: false
+
 - name: Create cgit directories
   ansible.builtin.file:
     path: "{{ item }}"
@@ -26,18 +33,15 @@
     owner: root
     group: root
   loop:
-    - "{{ cgit_repo_path }}"
     - "{{ cgit_cache_path }}"
     - "{{ cgit_log_path }}"
     - "/run/cgit"
 
-- name: Create git repositories directory
+- name: Ensure git repositories directory exists (don't change ownership)
   ansible.builtin.file:
     path: "{{ cgit_repo_path }}"
     state: directory
     mode: '0755'
-    owner: "{{ cgit_fcgi_user }}"
-    group: "{{ cgit_fcgi_group }}"
 
 - name: Deploy cgit configuration
   ansible.builtin.template:
@@ -48,7 +52,7 @@
     group: root
   notify: restart fcgiwrap
 
-- name: Deploy Caddy configuration for cgit
+- name: Deploy Caddy configuration for cgit (standalone, not via admin dashboard)
   ansible.builtin.template:
     src: cgit.caddy.j2
     dest: "{{ cgit_caddy_config }}"
@@ -56,6 +60,7 @@
     owner: root
     group: root
   notify: reload caddy
+  when: not (admin_dashboard_enabled | default(false) | bool)
 
 - name: Deploy fcgiwrap systemd service
   ansible.builtin.template:
@@ -147,7 +152,7 @@
         color: #586069;
         font-size: 0.9em;
       }
-    dest: "{{ cgit_repo_path }}/cgit.css"
+    dest: /usr/share/webapps/cgit/cgit.css
     mode: '0644'
     owner: root
     group: root
@@ -169,28 +174,12 @@
     user: root
     cron_file: cgit-scan
 
-- name: Create sample repository
+- name: Ensure repo directory is world-readable (for cgit scanning)
   ansible.builtin.shell: |
-    cd {{ cgit_repo_path }}
-    if [[ ! -d "sample-repo.git" ]]; then
-        mkdir sample-repo.git
-        cd sample-repo.git
-        git init --bare
-        echo "Sample repository for cgit" > description
-        echo "main" > HEAD
-    fi
-  args:
-    creates: "{{ cgit_repo_path }}/sample-repo.git"
-  become_user: "{{ cgit_fcgi_user }}"
-
-- name: Set proper permissions for git repositories
-  ansible.builtin.file:
-    path: "{{ cgit_repo_path }}"
-    state: directory
-    mode: '0755'
-    owner: "{{ cgit_fcgi_user }}"
-    group: "{{ cgit_fcgi_group }}"
-    recurse: true
+    find {{ cgit_repo_path }} -type d -exec chmod a+rx {} + 2>/dev/null
+    find {{ cgit_repo_path }} -type f -exec chmod a+r {} + 2>/dev/null
+  changed_when: false
+  failed_when: false
 
 - name: Create cgit health check endpoint
   ansible.builtin.copy:
