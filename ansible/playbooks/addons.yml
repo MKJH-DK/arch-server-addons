@@ -138,6 +138,14 @@
         - /srv/backups
         - /etc/caddy/conf.d
 
+    - name: Ensure Caddy log directory exists
+      ansible.builtin.file:
+        path: /var/log/caddy
+        state: directory
+        mode: '0755'
+        owner: caddy
+        group: caddy
+
     # ── AIDE (intrusion detection) — AUR package ─────────────────────
     - name: Check if AIDE is already installed
       ansible.builtin.shell: "pacman -Q aide 2>/dev/null"

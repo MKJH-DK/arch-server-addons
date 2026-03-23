@@ -5,7 +5,7 @@ Description=fcgiwrap FastCGI server socket
 ListenStream={{ cgit_fcgi_socket }}
 SocketMode=0660
 SocketUser={{ cgit_fcgi_user }}
-SocketGroup={{ cgit_fcgi_group }}
+SocketGroup=caddy
 
 [Install]
 WantedBy=sockets.target
