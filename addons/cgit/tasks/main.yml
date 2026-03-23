@@ -165,14 +165,36 @@
     owner: root
     group: root
 
-- name: Create periodic repository scan
-  ansible.builtin.cron:
-    name: "Scan cgit repositories"
-    job: "/usr/local/bin/scan-cgit-repos"
-    minute: "0"
-    hour: "*/6"
-    user: root
-    cron_file: cgit-scan
+- name: Deploy cgit scan systemd service
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/cgit-scan.service
+    mode: '0644'
+    content: |
+      [Unit]
+      Description=Scan cgit repositories
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/scan-cgit-repos
+
+- name: Deploy cgit scan systemd timer
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/cgit-scan.timer
+    mode: '0644'
+    content: |
+      [Unit]
+      Description=Scan cgit repositories every 6 hours
+      [Timer]
+      OnCalendar=*-*-* 0/6:00:00
+      Persistent=true
+      [Install]
+      WantedBy=timers.target
+
+- name: Enable cgit scan timer
+  ansible.builtin.systemd:
+    name: cgit-scan.timer
+    state: started
+    enabled: true
+    daemon_reload: true
 
 - name: Ensure repo directory is world-readable (for cgit scanning)
   ansible.builtin.shell: |
