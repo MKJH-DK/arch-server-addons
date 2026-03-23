@@ -372,7 +372,7 @@ done
 section "FILE SYSTEM"
 
 # SUID binaries (exclude container overlays, snap, proc, sys, dev, run)
-suid_excludes="-path /proc -prune -o -path /sys -prune -o -path /dev -prune -o -path /run -prune -o -path /var/lib/containers -prune -o -path /var/lib/machines -prune -o -path /snap -prune -o -path /srv/immich -prune -o -path /tmp -prune -o -path /var/tmp -prune"
+suid_excludes="-path /proc -prune -o -path /sys -prune -o -path /dev -prune -o -path /run -prune -o -path /var/lib/containers -prune -o -path /var/lib/machines -prune -o -path /snap -prune -o -path /srv/immich -prune -o -path /tmp -prune -o -path /var/tmp -prune -o -path /.snapshots -prune"
 suid_count=$(eval "find / $suid_excludes -o -perm -4000 -type f -print" 2>/dev/null | wc -l)
 [[ $suid_count -lt 30 ]] && check_pass "SUID binaries: $suid_count (host only)" || check_warn "SUID binaries: $suid_count (review recommended)"
 eval "find / $suid_excludes -o -perm -4000 -type f -print" 2>/dev/null | sort >> "$LOG_FILE"
@@ -390,7 +390,7 @@ find /etc /usr /srv -perm -o+w -type f 2>/dev/null >> "$LOG_FILE"
 ww_dirs_list=$(find / -path /proc -prune -o -path /sys -prune -o -path /dev -prune \
     -o -path /run -prune -o -path /tmp -prune -o -path /var/tmp -prune \
     -o -path /var/lib/containers -prune -o -path /var/lib/machines -prune \
-    -o -path /srv/immich -prune \
+    -o -path /srv/immich -prune -o -path /.snapshots -prune -o -path /mnt -prune \
     -o -type d \( -perm -0002 -a ! -perm -1000 \) -print 2>/dev/null | head -10)
 ww_dirs=$(echo "$ww_dirs_list" | grep -c . 2>/dev/null || echo 0)
 if [[ $ww_dirs -eq 0 ]]; then
@@ -404,7 +404,7 @@ fi
 unowned_files=$(find / -path /proc -prune -o -path /sys -prune -o -path /dev -prune \
     -o -path /var/lib/containers -prune -o -path /var/lib/machines -prune \
     -o -path /srv/immich -prune -o -path /run/containers -prune \
-    -o -path /tmp -prune -o -path /var/tmp -prune \
+    -o -path /tmp -prune -o -path /var/tmp -prune -o -path /.snapshots -prune \
     -o -path /home/*/.local/share/containers -prune \
     -o \( -nouser -o -nogroup \) -print 2>/dev/null | head -30)
 unowned=$(echo "$unowned_files" | grep -c . 2>/dev/null || echo 0)

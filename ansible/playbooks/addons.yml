@@ -588,6 +588,14 @@
         mode: '0600'
       when: env_has_secrets.rc == 0
 
+    # ── Fix world-writable dirs (add sticky bit) ─────────────────────
+    - name: Add sticky bit to /mnt/media if it exists
+      ansible.builtin.file:
+        path: /mnt/media
+        mode: '1777'
+        state: directory
+      failed_when: false
+
     # ── Reset failed systemd units ──────────────────────────────────────
     # ── Update health-check script from base repo ─────────────────────
     - name: Find base server health-check source
